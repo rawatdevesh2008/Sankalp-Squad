@@ -1,4 +1,4 @@
-# Sankalp-Squad: SegregateGuard
+# Sankalp-Squad: ShieldBin
 ### Source-Level Waste & Contamination Inspector
 **Bharat Builds Tour: Environmental Hacks (Track 03 - Waste and Energy)**  
 Powered by **Amazon Bedrock (Claude 3.5 Sonnet Vision)** & **Amazon DynamoDB**, deployed on **AWS App Runner + AWS Amplify**.
@@ -9,7 +9,7 @@ Powered by **Amazon Bedrock (Claude 3.5 Sonnet Vision)** & **Amazon DynamoDB**, 
 Recycling systems fail at the source because mixed waste (e.g. food grease or unwashed plastics inside dry recyclable bins) cross-contaminates entire truckloads, forcing **over 70% of recyclable material directly into landfills**.
 
 ## 💡 The Solution
-**SegregateGuard** requires **zero custom hardware**—running directly on any smartphone or laptop webcam.
+**ShieldBin** requires **zero custom hardware**—running directly on any smartphone or laptop webcam.
 Citizens or facility workers point their camera at their waste bin before disposal:
 1. **Live Detection & Contamination Audit:** Amazon Bedrock (Claude 3.5 Sonnet Vision) inspects the item for oil, moisture, leftover liquids, and material type.
 2. **Real-time Bounding Box Feedback:** 
