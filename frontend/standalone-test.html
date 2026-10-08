@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShieldBin - Live Webcam Inspector Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background-color: #020617; color: #f8fafc; padding: 20px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #1e293b; }
+    h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; }
+    .tag { font-size: 11px; background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); padding: 4px 8px; border-radius: 6px; }
+    .layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+    @media (max-width: 768px) { .layout { grid-template-columns: 1fr; } }
+    .video-card { position: relative; width: 100%; aspect-ratio: 4/3; background: #0f172a; border-radius: 16px; overflow: hidden; border: 2px solid #1e293b; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    video { width: 100%; height: 100%; object-fit: cover; }
+    canvas#overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .controls { margin-top: 16px; background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    select, button { background: #1e293b; color: white; border: 1px solid #334155; padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    button.primary { background: #16a34a; border-color: #22c55e; font-weight: bold; }
+    button.primary:hover { background: #15803d; }
+    .advice-card { margin-top: 16px; padding: 18px; border-radius: 14px; background: #0f172a; border: 2px solid #334155; }
+    .advice-card.green { border-color: #22c55e; box-shadow: 0 0 15px rgba(34, 197, 94, 0.2); }
+    .advice-card.red { border-color: #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+    .action-box { margin-top: 12px; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; }
+    .action-box.green { background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .action-box.red { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .sidebar-card { background: #0f172a; border: 1px solid #1e293b; padding: 20px; border-radius: 16px; margin-bottom: 20px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+    .stat-box { background: #020617; padding: 14px; border-radius: 10px; border: 1px solid #1e293b; }
+    .stat-val { font-size: 26px; font-weight: 900; margin-top: 4px; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🛡️ ShieldBin <span class="tag">Track 03: Waste & Energy</span></h1>
+      <span style="font-size: 12px; color: #94a3b8;">FastAPI + Amazon Bedrock + DynamoDB</span>
+    </header>
+
+    <div class="layout">
+      <!-- Main Camera Feed -->
+      <div>
+        <div class="video-card">
+          <video id="webcam" playsinline autoplay muted></video>
+          <canvas id="overlayCanvas" width="640" height="480"></canvas>
+          <canvas id="captureCanvas" width="640" height="480" style="display: none;"></canvas>
+        </div>
+
+        <div class="controls">
+          <div>
+            <label style="font-size: 12px; color: #94a3b8;">Target Bin: </label>
+            <select id="targetBin">
+              <option value="Dry Recyclable">Blue Bin (Dry Recyclable)</option>
+              <option value="Wet Organic">Green Bin (Wet Organic)</option>
+              <option value="Auto-Detect">Auto-Detect Stream</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="toggleAuto">Auto-Scan: ON</button>
+            <button id="scanBtn" class="primary">Scan Now</button>
+          </div>
+        </div>
+
+        <div id="adviceCard" class="advice-card" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 id="itemDetected" style="font-size: 18px;">Item Name</h3>
+            <span id="scoreBadge" class="tag">+15 Pts</span>
+          </div>
+          <div id="actionRequired" class="action-box green">Instruction</div>
+          <p id="contamReason" style="font-size: 12px; color: #f87171; margin-top: 8px; display: none;"></p>
+          <p id="ecoTip" style="font-size: 12px; color: #94a3b8; margin-top: 8px; border-top: 1px solid #1e293b; padding-top: 8px;"></p>
+        </div>
+      </div>
+
+      <!-- Leaderboard & Scoreboard -->
+      <div>
+        <div class="sidebar-card">
+          <h3 style="font-size: 16px; display: flex; align-items: center; justify-content: space-between;">
+            🏆 Household Leaderboard
+            <span style="font-size: 10px; color: #4ade80;">DynamoDB Sync</span>
+          </h3>
+          <p style="font-size: 11px; color: #94a3b8; margin-top: 4px;">household_402 • Ward-12 (Delhi)</p>
+
+          <div class="stat-grid">
+            <div class="stat-box">
+              <div style="font-size: 11px; color: #94a3b8;">GREEN POINTS</div>
+              <div id="totalPoints" class="stat-val" style="color: #4ade80;">100</div>
+            </div>
+            <div class="stat-box">
+              <div style="font-size: 11px; color: #94a3b8;">ACCURACY</div>
+              <div id="accuracyRate" class="stat-val" style="color: #38bdf8;">100%</div>
+            </div>
+            <div class="stat-box" style="grid-column: span 2;">
+              <div style="font-size: 11px; color: #94a3b8;">CONTAMINATION STOPPED</div>
+              <div id="contamStopped" class="stat-val" style="color: #f87171; font-size: 20px;">0 Risks Saved</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-card" style="font-size: 12px; line-height: 1.6;">
+          <h4 style="color: #e2e8f0; margin-bottom: 8px;">Indian SWM 2016 Bin Rules:</h4>
+          <p>🟦 <strong>Blue:</strong> Clean dry paper, plastics, cans, glass.</p>
+          <p>🟩 <strong>Green:</strong> Wet organic food scraps, peels.</p>
+          <p>🟨 <strong>Yellow:</strong> Electronic cables, batteries, chargers.</p>
+          <p>⬛ <strong>Black:</strong> Soiled greasy boxes, reject sanitary waste.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:8000';
+    const video = document.getElementById('webcam');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const captureCanvas = document.getElementById('captureCanvas');
+    const ctx = overlayCanvas.getContext('2d');
+    const capCtx = captureCanvas.getContext('2d');
+    const targetBinSelect = document.getElementById('targetBin');
+    const scanBtn = document.getElementById('scanBtn');
+    const toggleAutoBtn = document.getElementById('toggleAuto');
+
+    let autoScan = true;
+    let isProcessing = false;
+
+    // Start Webcam
+    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false })
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => { alert('Please allow camera access in your browser: ' + err.message); });
+
+    // Draw Bounding Box
+    function drawBox(result) {
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      const { ymin, xmin, ymax, xmax } = result.bounding_box;
+      const x = (xmin / 1000) * overlayCanvas.width;
+      const y = (ymin / 1000) * overlayCanvas.height;
+      const w = ((xmax - xmin) / 1000) * overlayCanvas.width;
+      const h = ((ymax - ymin) / 1000) * overlayCanvas.height;
+
+      const isGreen = result.box_color === 'green';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = isGreen ? '#22c55e' : '#ef4444';
+      ctx.fillStyle = isGreen ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillRect(x, y, w, h);
+
+      // Label Header
+      ctx.fillStyle = isGreen ? '#22c55e' : '#ef4444';
+      ctx.fillRect(x, Math.max(0, y - 24), 220, 24);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(result.item_detected + (isGreen ? ' (PASS)' : ' (ALERT)'), x + 6, Math.max(16, y - 8));
+    }
+
+    // Capture & Send Frame
+    async function captureFrame() {
+      if (isProcessing || video.videoWidth === 0) return;
+      isProcessing = true;
+      scanBtn.innerText = 'Analyzing...';
+
+      try {
+        capCtx.drawImage(video, 0, 0, 640, 480);
+        const imageBase64 = captureCanvas.toDataURL('image/jpeg', 0.75);
+
+        const res = await fetch(`${API_URL}/api/inspect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_base64: imageBase64,
+            target_bin: targetBinSelect.value,
+            user_id: 'household_402',
+            ward_id: 'Ward-12 (Delhi)'
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          drawBox(data);
+          updateUI(data);
+        }
+      } catch (e) {
+        console.error('Inspection failed:', e);
+      } finally {
+        isProcessing = false;
+        scanBtn.innerText = 'Scan Now';
+      }
+    }
+
+    // Update UI elements
+    function updateUI(data) {
+      const card = document.getElementById('adviceCard');
+      card.style.display = 'block';
+      card.className = 'advice-card ' + (data.box_color === 'green' ? 'green' : 'red');
+
+      document.getElementById('itemDetected').innerText = data.item_detected;
+      document.getElementById('scoreBadge').innerText = (data.points_awarded >= 0 ? '+' : '') + data.points_awarded + ' Pts';
+
+      const act = document.getElementById('actionRequired');
+      act.innerText = data.action_required;
+      act.className = 'action-box ' + (data.box_color === 'green' ? 'green' : 'red');
+
+      const reason = document.getElementById('contamReason');
+      if (data.contamination_reason) {
+        reason.style.display = 'block';
+        reason.innerText = '⚠️ ' + data.contamination_reason;
+      } else {
+        reason.style.display = 'none';
+      }
+
+      if (data.environmental_impact_tip) {
+        document.getElementById('ecoTip').innerText = '🌱 ' + data.environmental_impact_tip;
+      }
+
+      if (data.user_score) {
+        document.getElementById('totalPoints').innerText = data.user_score.total_points;
+        document.getElementById('accuracyRate').innerText = data.user_score.segregation_accuracy_pct + '%';
+        document.getElementById('contamStopped').innerText = data.user_score.contamination_prevented + ' Risks Saved';
+      }
+    }
+
+    scanBtn.addEventListener('click', captureFrame);
+    toggleAutoBtn.addEventListener('click', () => {
+      autoScan = !autoScan;
+      toggleAutoBtn.innerText = autoScan ? 'Auto-Scan: ON' : 'Auto-Scan: PAUSED';
+      toggleAutoBtn.style.color = autoScan ? '#4ade80' : '#94a3b8';
+    });
+
+    // 2.5-second interval loop
+    setInterval(() => {
+      if (autoScan) captureFrame();
+    }, 2500);
+  </script>
+</body>
+</html>
