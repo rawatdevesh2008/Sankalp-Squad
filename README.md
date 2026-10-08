@@ -22,11 +22,11 @@ Citizens or facility workers point their camera at their waste bin before dispos
 ## 🏗️ Architecture
 
 ```mermaid
-flowchart LR
-    A["Webcam Stream<br/>(Mobile / Laptop)"] -->|Frame Base64| B["AWS App Runner<br/>(FastAPI Backend)"]
-    B -->|InvokeModel| C["Amazon Bedrock<br/>(Claude 3.5 Sonnet)"]
-    C -->|Bounding Box + Contamination JSON| B
-    B -->|Log Scan & Increment Points| D["Amazon DynamoDB<br/>(Household & Ward Leaderboard)"]
+graph LR
+    A[Webcam Stream] -->|Frame Base64| B[AWS App Runner: FastAPI]
+    B -->|InvokeModel| C[Amazon Bedrock: Claude 3.5 Sonnet]
+    C -->|Bounding Box & Contamination JSON| B
+    B -->|Log Scan & Points| D[(Amazon DynamoDB)]
     B -->|Green/Red Box Overlay| A
 ```
 
