@@ -1,4 +1,4 @@
-# 🛡️ SegregateGuard — Backend Service
+# 🛡️ ShieldBin — Backend Service
 
 **AI-Powered Waste & Contamination Inspection Engine**  
 Built for the **Bharat Builds Tour: Environmental Hacks (Track 03 - Waste and Energy)**  
@@ -92,7 +92,7 @@ python test_api.py
   AWS_ACCESS_KEY_ID=AKIA...
   AWS_SECRET_ACCESS_KEY=...
   BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20250219-v1:0
-  DYNAMODB_TABLE_NAME=SegregateGuard_Scans
+  DYNAMODB_TABLE_NAME=ShieldBin_Scans
   ```
 
 ---

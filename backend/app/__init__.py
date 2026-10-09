@@ -1,1 +1,1 @@
-# SegregateGuard Backend Package
+# ShieldBin Backend Package

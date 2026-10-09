@@ -1,4 +1,4 @@
-# SegregateGuard Backend Dockerfile for AWS App Runner
+# ShieldBin Backend Dockerfile for AWS App Runner
 FROM python:3.11-slim
 
 # Set environment variables

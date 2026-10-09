@@ -20,10 +20,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
 )
-logger = logging.getLogger("segregateguard.api")
+logger = logging.getLogger("shieldbin.api")
 
 app = FastAPI(
-    title="SegregateGuard API",
+    title="ShieldBin API",
     description=(
         "Source-Level Waste & Contamination Inspection Engine powered by "
         "Amazon Bedrock (Claude Vision) and Amazon DynamoDB. Deployed on AWS App Runner."
@@ -85,7 +85,7 @@ INDIAN_WASTE_CATEGORIES = [
 def root():
     """Welcome endpoint providing health status and interactive documentation links."""
     return {
-        "project": "SegregateGuard",
+        "project": "ShieldBin",
         "tagline": "AI Waste & Contamination Inspector for AWS Environmental Hacks",
         "track": "Track 03 - Waste and Energy",
         "core_demo": "Live webcam stream -> green/red bounding box -> user score in DynamoDB",
@@ -110,7 +110,7 @@ def health_check():
     is_bedrock_configured = bool(settings.AWS_ACCESS_KEY_ID or bedrock_service._client is not None)
     return {
         "status": "healthy",
-        "service": "SegregateGuard-Backend",
+        "service": "ShieldBin-Backend",
         "bedrock_configured": is_bedrock_configured,
         "mock_mode": settings.USE_MOCK_BEDROCK or not is_bedrock_configured,
         "model_id": settings.BEDROCK_MODEL_ID,

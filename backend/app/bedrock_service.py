@@ -12,7 +12,7 @@ from app.config import settings
 from app.prompts import get_inspection_prompt
 from app.models import InspectionResponse, BoundingBox
 
-logger = logging.getLogger("segregateguard.bedrock")
+logger = logging.getLogger("shieldbin.bedrock")
 
 # Predefined realistic simulation responses for testing without active AWS credentials
 MOCK_ITEMS = [
@@ -280,7 +280,7 @@ class BedrockService:
     def _generate_mock_response(self, target_bin: str = "Dry Recyclable", reason: Optional[str] = None) -> InspectionResponse:
         """Returns a high-fidelity simulation object with bounding box coordinates."""
         item = random.choice(MOCK_ITEMS)
-        engine_label = "SegregateGuard Simulation Engine"
+        engine_label = "ShieldBin Simulation Engine"
         if reason:
             engine_label += f" [{reason}]"
 

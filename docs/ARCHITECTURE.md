@@ -31,8 +31,8 @@ graph TD
     end
 
     subgraph Database["Persistent Data Layer"]
-        DdbScans[("Amazon DynamoDB<br/>Table: SegregateGuard_Scans<br/>PK: scan_id")]
-        DdbScores[("Amazon DynamoDB<br/>Table: SegregateGuard_Scans_Scores<br/>PK: user_id")]
+        DdbScans[("Amazon DynamoDB<br/>Table: ShieldBin_Scans<br/>PK: scan_id")]
+        DdbScores[("Amazon DynamoDB<br/>Table: ShieldBin_Scans_Scores<br/>PK: user_id")]
     end
 
     Cam -->|1. Base64 Frame (Throttled 2-3s)| Amp
@@ -100,8 +100,8 @@ The frontend dispatches an asynchronous HTTP POST request to the FastAPI App Run
 ### Step 5: DynamoDB Persistence & Score Update
 * `app/dynamodb_service.py` receives the structured inference result.
 * Generates a unique audit identifier: `scan_id = "scan_" + uuid4().hex[:12]`.
-* Persists the audit record into `SegregateGuard_Scans`.
-* Performs a transactional update on `SegregateGuard_Scans_Scores` for `user_id`:
+* Persists the audit record into `ShieldBin_Scans`.
+* Performs a transactional update on `ShieldBin_Scans_Scores` for `user_id`:
   * Increments `total_scans` by 1.
   * Adjusts `total_points` by `points_awarded` (+15 for clean, +10 for remediated, -5 for cross-contamination).
   * If contaminated, increments `contamination_prevented`.
@@ -161,7 +161,7 @@ The backend returns `InspectionResponse` with HTTP 200 OK.
 
 ## 4. DynamoDB Data Model
 
-### Table 1: `SegregateGuard_Scans` (Audit Trail)
+### Table 1: `ShieldBin_Scans` (Audit Trail)
 * **Purpose:** Immutable audit log of every inspection frame analyzed.
 * **Partition Key (PK):** `scan_id` (String, e.g., `scan_8006729a16ac`)
 * **Sort Key (SK):** *None* (or optional `timestamp` for range queries)
@@ -180,7 +180,7 @@ The backend returns `InspectionResponse` with HTTP 200 OK.
 | `action_required` | String | Specific user action |
 | `points_awarded` | Number | Points delta (+15, +10, -5) |
 
-### Table 2: `SegregateGuard_Scans_Scores` (User & Ward Ledger)
+### Table 2: `ShieldBin_Scans_Scores` (User & Ward Ledger)
 * **Purpose:** Real-time state of household scores and ward leaderboards.
 * **Partition Key (PK):** `user_id` (String, e.g., `household_402`)
 
@@ -196,9 +196,9 @@ The backend returns `InspectionResponse` with HTTP 200 OK.
 | `last_updated` | String | Timestamp of latest scan |
 
 ### Key Access Patterns:
-1. **Record Scan:** `PutItem` on `SegregateGuard_Scans` with `scan_id`.
-2. **Retrieve Household Score:** `GetItem` on `SegregateGuard_Scans_Scores` with `Key={"user_id": user_id}`.
-3. **Update Household Score:** `PutItem` / `UpdateItem` on `SegregateGuard_Scans_Scores` after each scan.
+1. **Record Scan:** `PutItem` on `ShieldBin_Scans` with `scan_id`.
+2. **Retrieve Household Score:** `GetItem` on `ShieldBin_Scans_Scores` with `Key={"user_id": user_id}`.
+3. **Update Household Score:** `PutItem` / `UpdateItem` on `ShieldBin_Scans_Scores` after each scan.
 
 ---
 
@@ -230,8 +230,8 @@ Instead of hardcoding long-lived access keys, the App Runner service is assigned
         "dynamodb:Query"
       ],
       "Resource": [
-        "arn:aws:dynamodb:*:*:table/SegregateGuard_Scans",
-        "arn:aws:dynamodb:*:*:table/SegregateGuard_Scans_Scores"
+        "arn:aws:dynamodb:*:*:table/ShieldBin_Scans",
+        "arn:aws:dynamodb:*:*:table/ShieldBin_Scans_Scores"
       ]
     }
   ]

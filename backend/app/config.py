@@ -21,7 +21,7 @@ class Settings:
     )
     
     # DynamoDB Audit Logging
-    DYNAMODB_TABLE_NAME: str = os.getenv("DYNAMODB_TABLE_NAME", "SegregateGuard_Scans")
+    DYNAMODB_TABLE_NAME: str = os.getenv("DYNAMODB_TABLE_NAME", "ShieldBin_Scans")
     ENABLE_DYNAMODB_LOGGING: bool = os.getenv("ENABLE_DYNAMODB_LOGGING", "true").lower() in ("true", "1", "yes")
 
     # Server Host & Port

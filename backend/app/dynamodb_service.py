@@ -9,7 +9,7 @@ from botocore.exceptions import ClientError, BotoCoreError, NoCredentialsError
 from app.config import settings
 from app.models import UserScore
 
-logger = logging.getLogger("segregateguard.dynamodb")
+logger = logging.getLogger("shieldbin.dynamodb")
 
 class DynamoDBService:
     def __init__(self):

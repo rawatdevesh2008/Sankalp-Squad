@@ -1,5 +1,5 @@
 """
-Automated test script for SegregateGuard Backend.
+Automated test script for ShieldBin Backend.
 Verifies the Single Core Working Feature:
 Webcam stream -> green/red bounding box -> user score in DynamoDB.
 """
@@ -33,7 +33,7 @@ def create_sample_test_image_base64() -> str:
 
 def run_tests():
     print("==================================================")
-    print("   Running SegregateGuard Backend Demo Tests      ")
+    print("   Running ShieldBin Backend Demo Tests          ")
     print("==================================================")
 
     # 1. Test Root
