@@ -1,1 +1,60 @@
-
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1713">
+<title>SegregateGuard — Waste Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="#"><span class="brand-mark">✳</span><span>segregate<span class="brand-light">guard</span><small>WASTE INTELLIGENCE</small></span></a>
+    <div class="workspace-label">WORKSPACE</div>
+    <nav>
+      <button class="nav-item active" data-view="overview"><span>◫</span> Overview</button>
+      <button class="nav-item" data-view="scanner"><span>◎</span> Smart scanner <b class="live-dot"></b></button>
+      <button class="nav-item" data-view="insights"><span>⌁</span> Impact insights</button>
+      <button class="nav-item" data-view="guide"><span>▤</span> Sorting guide</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="eco-card"><div class="eco-icon">✦</div><strong>Small actions.<br>Massive impact.</strong><p>Every correct sort moves us closer to a circular future.</p><div class="eco-progress"><i></i></div><small>YOUR IMPACT JOURNEY</small></div>
+      <div class="profile"><div class="avatar">AC</div><div><strong>Eco Explorer</strong><small id="profileId">household_402</small></div><button id="settingsBtn" title="Settings">⚙</button></div>
+    </div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div class="crumb">Workspace <span>/</span> <b id="crumbName">Overview</b></div><div class="top-actions"><span class="status-pill"><i></i><span id="connectionText">API not checked</span></span><button class="icon-button" id="refreshBtn" title="Refresh data">↻</button><div class="date-chip" id="todayDate">TODAY</div></div></header>
+    <section class="welcome-row"><div><div class="eyebrow"><span class="eyebrow-line"></span> THE FUTURE IS LESS WASTE</div><h1>Good choices,<br><em>cleaner planet.</em></h1><p class="subhead">Your personal command centre for smarter waste sorting.</p></div><div class="hero-orb"><div class="orb-ring ring-a"></div><div class="orb-ring ring-b"></div><div class="orb-core">♻</div><span class="orb-label label-top">SORT SMARTER</span><span class="orb-label label-bottom">LIVE · LEARN · REPEAT</span></div></section>
+    <section class="stats-grid">
+      <article class="stat-card stat-feature"><div class="stat-top"><span>YOUR ECO SCORE</span><span class="stat-symbol">✦</span></div><div class="stat-number" id="scoreValue">100<span> pts</span></div><div class="stat-foot"><span class="trend">↗ <b id="pointsDelta">Ready to grow</b></span><span class="muted">Lifetime points</span></div><div class="score-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
+      <article class="stat-card"><div class="stat-top"><span>ITEMS INSPECTED</span><span class="stat-icon mint">◎</span></div><div class="stat-number" id="scansValue">0</div><div class="stat-foot"><span class="muted">Across your scans</span><span class="mini-tag">ALL TIME</span></div></article>
+      <article class="stat-card"><div class="stat-top"><span>SORTING ACCURACY</span><span class="stat-icon blue">↗</span></div><div class="stat-number" id="accuracyValue">100<span>%</span></div><div class="accuracy-track"><i id="accuracyBar"></i></div><div class="stat-foot"><span class="muted">Correct segregation</span><span class="trend" id="accuracyLabel">Excellent start</span></div></article>
+      <article class="stat-card"><div class="stat-top"><span>CONTAMINATION STOPPED</span><span class="stat-icon amber">✧</span></div><div class="stat-number" id="preventedValue">0</div><div class="stat-foot"><span class="muted">Better recycling streams</span><span class="mini-tag">GOOD WORK</span></div></article>
+    </section>
+    <section class="content-grid">
+      <article class="panel scanner-panel" id="scannerPanel">
+        <div class="panel-heading"><div><div class="eyebrow">AI-POWERED INSPECTION</div><h2>Smart waste scanner</h2><p>Show us an item. We'll help it find the right home.</p></div><span class="live-badge"><i></i> READY TO SCAN</span></div>
+        <div class="scanner-stage" id="dropZone">
+          <video id="cameraVideo" autoplay playsinline muted hidden></video><img id="previewImage" alt="Selected waste item preview" hidden>
+          <div class="scan-corners"><i></i><i></i><i></i><i></i></div><div class="scan-line" id="scanLine"></div>
+          <div class="stage-placeholder" id="stagePlaceholder"><div class="scan-art"><span class="art-spark">✦</span><span class="art-box">♻</span><span class="art-dot"></span></div><strong>Ready when you are</strong><span>Upload a photo or activate your camera</span><small>JPG · PNG · WEBP</small></div>
+          <div class="camera-overlay" id="cameraOverlay" hidden><span><i></i> CAMERA LIVE</span><small>Position one item inside the frame</small></div>
+          <div class="image-label" id="imageLabel" hidden>IMAGE LOADED <span>✓</span></div>
+        </div>
+        <div class="scanner-controls"><label class="field-label" for="targetBin">CURRENT BIN / CONTEXT</label><select id="targetBin"><option>Dry Recyclable</option><option>Wet Organic</option><option>Sanitary / Landfill</option><option>E-Waste</option><option>Domestic Hazardous</option><option>Auto-Detect</option></select><div class="button-row"><button class="btn btn-primary" id="uploadBtn"><span>↑</span> Upload image</button><button class="btn btn-secondary" id="cameraBtn"><span>◎</span> Use camera</button><button class="btn btn-scan" id="scanBtn" disabled><span>✦</span> Inspect item</button><input type="file" id="fileInput" accept="image/*" hidden></div><p class="privacy-note">⌑ Images are sent to your configured inspection API for analysis.</p></div>
+      </article>
+      <article class="panel result-panel"><div class="panel-heading compact"><div><div class="eyebrow">LATEST INSPECTION</div><h2>Scan intelligence</h2></div><span class="result-index" id="resultIndex"># —</span></div><div class="empty-result" id="emptyResult"><div class="empty-symbol">✧</div><strong>Your next insight starts here</strong><p>Run a scan to reveal material details, contamination alerts and the right bin.</p><div class="empty-points"><span>01 <small>IDENTIFY</small></span><span>02 <small>VERIFY</small></span><span>03 <small>IMPROVE</small></span></div></div>
+      <div id="resultContent" hidden><div class="result-status" id="resultStatus"><span class="result-check">✓</span><div><small>INSPECTION RESULT</small><strong id="resultHeadline">Item verified</strong></div><span class="confidence" id="confidence">98% confidence</span></div><h3 id="itemName">Clean PET Water Bottle</h3><p class="result-description" id="itemDescription">Material information will appear here.</p><div class="result-tags"><span id="categoryTag">DRY RECYCLABLE</span><span id="materialTag">PET #1</span></div><div class="bin-recommendation"><div class="bin-illustration" id="binIllustration">▤</div><div><small>RECOMMENDED DESTINATION</small><strong id="correctBin">Blue Bin (Recyclables)</strong><p id="actionRequired">Follow the recommended action.</p></div></div><div class="result-block"><div class="block-title">YOUR NEXT STEPS <span>✓ CHECKLIST</span></div><div id="stepsList" class="steps-list"></div></div><div class="impact-tip"><span>✦</span><div><small>PLANET FACT</small><p id="impactTip">A little care makes recycling work better.</p></div></div><div class="points-earned"><span>✧</span><div><strong id="pointsEarned">+15 points</strong><small>Added to your eco score</small></div><span class="points-scan-id" id="scanId"></span></div></div>
+      </article>
+    </section>
+    <section class="lower-grid"><article class="panel history-panel"><div class="panel-heading compact"><div><div class="eyebrow">YOUR ACTIVITY</div><h2>Recent inspections</h2></div><button class="text-button" id="clearHistoryBtn">Clear local history ↗</button></div><div class="history-list" id="historyList"><div class="history-empty">No scans yet. Your inspection trail will appear here.</div></div></article>
+    <article class="panel bins-panel"><div class="panel-heading compact"><div><div class="eyebrow">SORTING, SIMPLIFIED</div><h2>Know your bins</h2></div><button class="text-button" data-view="guide">Full guide ↗</button></div><div class="bin-list"><div class="bin-row"><span class="bin-dot blue-bin"></span><div><strong>Blue bin</strong><small>Clean, dry recyclables</small></div><span class="bin-examples">Paper · PET · Metal</span></div><div class="bin-row"><span class="bin-dot green-bin"></span><div><strong>Green bin</strong><small>Wet organic waste</small></div><span class="bin-examples">Peels · Food scraps</span></div><div class="bin-row"><span class="bin-dot yellow-bin"></span><div><strong>Yellow bin</strong><small>E-waste drop-off</small></div><span class="bin-examples">Batteries · Cables</span></div><div class="bin-row"><span class="bin-dot red-bin"></span><div><strong>Red bin</strong><small>Domestic hazardous</small></div><span class="bin-examples">Paint · Chemicals</span></div><div class="bin-row"><span class="bin-dot black-bin"></span><div><strong>Black bin</strong><small>Sanitary / landfill</small></div><span class="bin-examples">Soiled waste</span></div></div></article></section>
+    <footer><span>✳ SEGREGATEGUARD <span class="footer-muted">· BETTER SORTING, BY DESIGN</span></span><span>BUILT FOR A CLEANER TOMORROW <b>↗</b></span></footer>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<div class="modal-backdrop" id="settingsModal" hidden><div class="modal"><button class="modal-close" id="closeSettings">×</button><div class="eyebrow">CONNECT YOUR WORKSPACE</div><h2>API connection</h2><p>Enter your FastAPI backend URL. For local development, use <code>http://localhost:8000</code>.</p><label class="field-label" for="apiUrl">BACKEND BASE URL</label><input id="apiUrl" placeholder="http://localhost:8000"><label class="field-label" for="userId">HOUSEHOLD / USER ID</label><input id="userId" value="household_402"><label class="field-label" for="wardId">WARD / LOCATION</label><input id="wardId" value="Ward-12 (Delhi)"><div class="modal-actions"><button class="btn btn-secondary" id="testApiBtn">Test connection</button><button class="btn btn-primary" id="saveSettingsBtn">Save settings</button></div><p class="modal-help">Connection settings are saved only in this browser.</p></div></div>
+<script src="app.js"></script>
+</body></html>
