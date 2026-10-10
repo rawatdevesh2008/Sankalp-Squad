@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { InspectionResponse } from '../types';
+import { InspectionResult } from './InspectionResult';
 
 interface CameraInspectorProps {
   apiUrl: string;
@@ -67,7 +68,22 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const { ymin, xmin, ymax, xmax } = result.bounding_box;
+    // If No Object is detected, do not draw bounding box overlay
+    const isNoObject =
+      !result.item_detected ||
+      result.item_detected === 'None' ||
+      result.correct_bin === 'Waiting for Item...' ||
+      result.category === 'N/A';
+
+    if (isNoObject) {
+      return;
+    }
+
+    const { ymin, xmin, ymax, xmax } = result.bounding_box || { ymin: 0, xmin: 0, ymax: 0, xmax: 0 };
+    if (ymin === 0 && xmin === 0 && ymax === 0 && xmax === 0) {
+      return;
+    }
+
     const x = (xmin / 1000) * canvas.width;
     const y = (ymin / 1000) * canvas.height;
     const width = ((xmax - xmin) / 1000) * canvas.width;
@@ -91,7 +107,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     ctx.stroke();
 
     // Badge Label Header
-    const labelText = `${result.item_detected} • ${isGreen ? 'CLEAN (PASS)' : 'CONTAMINATED'}`;
+    const labelText = `${result.item_detected} • ${isGreen ? 'CLEAN (PASS)' : 'CONTAMINATED / HAZARD'}`;
     const fontSize = Math.max(12, Math.round(canvas.width * 0.022));
     ctx.font = `bold ${fontSize}px sans-serif`;
     const textWidth = ctx.measureText(labelText).width;
@@ -142,7 +158,18 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     [apiUrl, targetBin, userId, wardId, isProcessing, onInspectionResult, drawOverlay]
   );
 
-  // 3. Capture Frame from Live Video and Dispatch to Backend
+  // 3. Reset / Scan Another Item Handler
+  const handleReset = useCallback(() => {
+    setLastResult(null);
+    setPreviewImage(null);
+    const canvas = overlayCanvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, []);
+
+  // Capture Frame from Live Video and Dispatch to Backend
   const captureAndInspect = useCallback(async () => {
     if (previewImage) {
       inspectImageBase64(previewImage);
@@ -180,14 +207,49 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
   };
 
   // Helper to generate and inspect simulated sample waste items
-  const handleSampleTest = (type: 'bottle' | 'pizza' | 'battery' | 'milk') => {
+  const handleSampleTest = (type: 'bottle' | 'pizza' | 'phone' | 'battery' | 'milk' | 'empty') => {
     const c = document.createElement('canvas');
     c.width = 640;
     c.height = 480;
     const ctx = c.getContext('2d');
     if (!ctx) return;
 
-    if (type === 'bottle') {
+    if (type === 'phone') {
+      // Draw simulated Mobile Phone (E-Waste / Hazardous)
+      ctx.fillStyle = '#090d16';
+      ctx.fillRect(0, 0, 640, 480);
+      // Phone Body
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      if (typeof (ctx as any).roundRect === 'function') {
+        (ctx as any).roundRect(240, 90, 160, 300, 24);
+      } else {
+        ctx.rect(240, 90, 160, 300);
+      }
+      ctx.fill();
+      // Phone Screen
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      if (typeof (ctx as any).roundRect === 'function') {
+        (ctx as any).roundRect(248, 105, 144, 270, 14);
+      } else {
+        ctx.rect(248, 105, 144, 270);
+      }
+      ctx.fill();
+      // Camera bump
+      ctx.fillStyle = '#334155';
+      ctx.beginPath();
+      ctx.arc(268, 125, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Smartphone', 320, 240);
+      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('Lithium Battery inside', 320, 265);
+      setTargetBin('Dry Recyclable');
+    } else if (type === 'bottle') {
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, 640, 480);
       ctx.fillStyle = '#38bdf8';
@@ -219,7 +281,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       ctx.font = 'bold 20px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Greasy Pizza Box', 320, 240);
-      setTargetBin('Dry Recyclable'); // Test contamination detection in dry bin!
+      setTargetBin('Dry Recyclable');
     } else if (type === 'battery') {
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, 640, 480);
@@ -238,7 +300,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       ctx.textAlign = 'center';
       ctx.fillText('Lithium Battery / Cable', 320, 240);
       setTargetBin('Dry Recyclable');
-    } else {
+    } else if (type === 'milk') {
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, 640, 480);
       ctx.fillStyle = '#e2e8f0';
@@ -247,6 +309,15 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       ctx.font = 'bold 18px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Unrinsed Milk Pouch', 320, 240);
+      setTargetBin('Dry Recyclable');
+    } else {
+      // Empty / No Object scenario
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillStyle = '#334155';
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('[Empty Viewfinder Frame - No Item]', 320, 240);
       setTargetBin('Dry Recyclable');
     }
 
@@ -261,7 +332,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
     const interval = setInterval(() => {
       captureAndInspect();
-    }, 2500); // 2.5 seconds throttle
+    }, 2500);
 
     return () => clearInterval(interval);
   }, [autoScan, isStreaming, previewImage, captureAndInspect]);
@@ -278,7 +349,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       />
 
       {/* Viewport Frame */}
-      <div className="relative rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-800 shadow-2xl aspect-[4/3] max-w-2xl mx-auto w-full">
+      <div className="relative rounded-2xl overflow-hidden bg-slate-900 dark:bg-slate-950 border-2 border-slate-700/60 dark:border-slate-800 shadow-2xl aspect-[4/3] max-w-2xl mx-auto w-full transition-all">
         {previewImage ? (
           <img
             src={previewImage}
@@ -327,7 +398,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
           </div>
 
           <div className="bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/60 text-xs text-slate-300">
-            Scanning: <strong className="text-white">{targetBin}</strong>
+            Target Bin: <strong className="text-white">{targetBin}</strong>
           </div>
         </div>
 
@@ -348,7 +419,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
                 onClick={() => handleSampleTest('bottle')}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-bold border border-slate-700"
               >
-                🧴 Test Sample Bottle
+                🧴 Test Bottle
               </button>
             </div>
           </div>
@@ -356,14 +427,16 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       </div>
 
       {/* Controller Buttons */}
-      <div className="glass-panel rounded-xl p-3 sm:p-4 flex flex-col gap-3 max-w-2xl mx-auto w-full border border-slate-800">
+      <div className="glass-panel rounded-xl p-3 sm:p-4 flex flex-col gap-3 max-w-2xl mx-auto w-full border border-slate-200 dark:border-slate-800 transition-all">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <label className="text-[11px] sm:text-xs text-slate-400 uppercase font-semibold shrink-0">Target Bin:</label>
+            <label className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold shrink-0">
+              Target Bin:
+            </label>
             <select
               value={targetBin}
               onChange={(e) => setTargetBin(e.target.value)}
-              className="bg-slate-900 border border-slate-700 text-xs sm:text-sm text-white rounded-lg px-2.5 sm:px-3 py-1.5 focus:outline-none focus:border-emerald-500 w-full sm:w-auto"
+              className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white rounded-lg px-2.5 sm:px-3 py-1.5 focus:outline-none focus:border-emerald-500 w-full sm:w-auto"
             >
               <option value="Dry Recyclable">Blue Bin (Dry Recyclable)</option>
               <option value="Wet Organic">Green Bin (Wet Organic)</option>
@@ -382,7 +455,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
                     ctx?.clearRect(0, 0, canvas.width, canvas.height);
                   }
                 }}
-                className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-cyan-300 hover:bg-slate-700 border border-cyan-500/30 flex-1 sm:flex-initial"
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-200 dark:bg-slate-800 text-cyan-700 dark:text-cyan-300 hover:bg-slate-300 dark:hover:bg-slate-700 border border-cyan-500/30 flex-1 sm:flex-initial cursor-pointer"
               >
                 📹 Live Camera
               </button>
@@ -390,7 +463,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700 transition-all flex items-center justify-center gap-1.5 flex-1 sm:flex-initial"
+              className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 flex-1 sm:flex-initial cursor-pointer"
             >
               <span>📁</span>
               <span>Upload Photo</span>
@@ -398,10 +471,10 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
             <button
               onClick={() => setAutoScan(!autoScan)}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex-1 sm:flex-initial ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex-1 sm:flex-initial cursor-pointer ${
                 autoScan && !previewImage
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               {autoScan && !previewImage ? 'Auto-Scan: ON' : 'Auto-Scan: PAUSED'}
@@ -410,7 +483,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
             <button
               onClick={captureAndInspect}
               disabled={isProcessing}
-              className="px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-all disabled:opacity-50 flex-1 sm:flex-initial"
+              className="px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50 flex-1 sm:flex-initial cursor-pointer"
             >
               {isProcessing ? 'Analyzing...' : 'Scan Now'}
             </button>
@@ -418,103 +491,51 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         </div>
 
         {/* Quick Test Presets Row */}
-        <div className="pt-2.5 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <span className="text-[11px] text-slate-400 font-semibold shrink-0">Quick Demo Samples:</span>
+        <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold shrink-0">
+            Quick Test Presets:
+          </span>
           <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 w-full sm:w-auto">
+            <button
+              onClick={() => handleSampleTest('phone')}
+              disabled={isProcessing}
+              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 transition-all text-center truncate cursor-pointer font-semibold"
+            >
+              📱 Mobile Phone (E-Waste)
+            </button>
             <button
               onClick={() => handleSampleTest('bottle')}
               disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-cyan-950/60 text-cyan-300 hover:bg-cyan-900/60 border border-cyan-800/60 transition-all text-center truncate"
+              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all text-center truncate cursor-pointer"
             >
               🧴 PET Bottle (Clean)
             </button>
             <button
               onClick={() => handleSampleTest('pizza')}
               disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-amber-950/60 text-amber-300 hover:bg-amber-900/60 border border-amber-800/60 transition-all text-center truncate"
+              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 border border-rose-500/30 transition-all text-center truncate cursor-pointer"
             >
               🍕 Greasy Pizza Box
             </button>
             <button
-              onClick={() => handleSampleTest('milk')}
+              onClick={() => handleSampleTest('empty')}
               disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-blue-950/60 text-blue-300 hover:bg-blue-900/60 border border-blue-800/60 transition-all text-center truncate"
+              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-all text-center truncate cursor-pointer"
             >
-              🥛 Milk Pouch (Dirty)
-            </button>
-            <button
-              onClick={() => handleSampleTest('battery')}
-              disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-rose-950/60 text-rose-300 hover:bg-rose-900/60 border border-rose-800/60 transition-all text-center truncate"
-            >
-              🔋 Battery (Hazard)
+              ⚪ Empty (Waiting Test)
             </button>
           </div>
         </div>
       </div>
 
-      {/* Real-time Advice & Remediation Card */}
-      {lastResult && (
-        <div
-          className={`glass-panel rounded-2xl p-4 sm:p-5 border-2 transition-all max-w-2xl mx-auto w-full ${
-            lastResult.box_color === 'green' ? 'box-green' : 'box-red'
-          }`}
-        >
-          <div className="flex flex-wrap sm:flex-nowrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xl sm:text-2xl">{lastResult.box_color === 'green' ? '🟢' : '🔴'}</span>
-                <h4 className="text-lg sm:text-xl font-bold text-white break-words">{lastResult.item_detected}</h4>
-                <span
-                  className={`text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold shrink-0 ${
-                    lastResult.box_color === 'green'
-                      ? 'bg-emerald-500/20 text-emerald-300'
-                      : 'bg-rose-500/20 text-rose-300'
-                  }`}
-                >
-                  {lastResult.box_color === 'green' ? '+15 Points' : '-5 Points Risk'}
-                </span>
-              </div>
-              <p className="text-[11px] sm:text-xs text-slate-400 mt-1 font-mono">
-                Prescribed Disposal: <strong className="text-slate-200">{lastResult.correct_bin}</strong>
-              </p>
-            </div>
-            <div className="text-right shrink-0">
-              <span className="text-[10px] sm:text-xs font-mono text-slate-400">Confidence</span>
-              <p className="text-base sm:text-lg font-bold text-white font-mono">
-                {(lastResult.confidence_score * 100).toFixed(0)}%
-              </p>
-            </div>
-          </div>
-
-          {/* Action Required Banner */}
-          <div
-            className={`mt-3.5 sm:mt-4 p-3 sm:p-3.5 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2.5 ${
-              lastResult.box_color === 'green'
-                ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-200'
-                : 'bg-rose-950/40 border-rose-800/80 text-rose-200'
-            }`}
-          >
-            <span className="text-base shrink-0">👉</span>
-            <span>{lastResult.action_required}</span>
-          </div>
-
-          {/* Contamination reason if present */}
-          {lastResult.contamination_reason && (
-            <p className="text-[11px] sm:text-xs text-rose-300/90 mt-2.5 italic">
-              ⚠️ Reason: {lastResult.contamination_reason}
-            </p>
-          )}
-
-          {/* Eco Tip */}
-          {lastResult.environmental_impact_tip && (
-            <div className="mt-3 text-[11px] sm:text-xs text-slate-400 border-t border-slate-800/80 pt-2 flex items-center gap-1.5">
-              <span className="shrink-0">🌱</span>
-              <span>{lastResult.environmental_impact_tip}</span>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Real-time Advice & Remediation Card (Dedicated InspectionResult Component) */}
+      <InspectionResult
+        result={lastResult}
+        onReset={handleReset}
+        isScanning={isProcessing}
+      />
     </div>
   );
 };
+
+export default CameraInspector;

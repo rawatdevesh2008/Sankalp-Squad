@@ -6,6 +6,14 @@
   color-scheme: dark;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
+html.light {
+  color-scheme: light;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -13,29 +21,65 @@ html, body {
   min-height: 100%;
   overflow-x: hidden;
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #020617;
-  color: #f8fafc;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+html.dark body {
+  background-color: #020617;
+  color: #f8fafc;
+}
+
+html.light body {
+  background-color: #f8fafc;
+  color: #0f172a;
 }
 
 /* Glassmorphism & UI styles */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.82);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+html.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+html.light .glass-panel {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.06), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
 }
 
 .box-green {
   border-color: #22c55e !important;
-  box-shadow: 0 0 20px rgba(34, 197, 94, 0.25);
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.25);
 }
 
 .box-red {
   border-color: #ef4444 !important;
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.25);
+}
+
+.box-neutral {
+  border-color: rgba(100, 116, 139, 0.4) !important;
+  box-shadow: 0 0 20px rgba(100, 116, 139, 0.1);
+}
+
+/* Pulsing radar ring */
+@keyframes radar-pulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.animate-radar {
+  animation: radar-pulse 2.2s infinite ease-in-out;
 }
 
 /* Ensure canvas doesn't stretch or distort */
@@ -49,14 +93,24 @@ canvas {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
+html.dark ::-webkit-scrollbar-track {
   background: #020617;
 }
-::-webkit-scrollbar-thumb {
+html.dark ::-webkit-scrollbar-thumb {
   background: #1e293b;
   border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover {
+html.dark ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
 
+html.light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
