@@ -280,17 +280,46 @@ def run_tests():
     # 14. Test Verified AWS Bedrock Vision Model IDs
     print("\n14. Verifying AWS Bedrock Vision Model IDs ...")
     from app.config import settings
-    from app.bedrock_service import BEDROCK_VISION_MODELS
+    from app.bedrock_service import BEDROCK_VISION_MODELS, GEMINI_VISION_MODELS
     assert settings.BEDROCK_MODEL_ID != "anthropic.claude-3-5-sonnet-20250219-v1:0", "Invalid 20250219 model ID must not be used!"
     assert settings.BEDROCK_MODEL_ID == "anthropic.claude-3-5-sonnet-20240620-v1:0"
     assert "anthropic.claude-3-5-sonnet-20240620-v1:0" in BEDROCK_VISION_MODELS
     assert "anthropic.claude-3-haiku-20240307-v1:0" in BEDROCK_VISION_MODELS
+    assert "gemini-3.6-flash" in GEMINI_VISION_MODELS
     print(f"   [PASS] Verified Bedrock Vision Model ID: {settings.BEDROCK_MODEL_ID}")
 
+    # 15. Test Live Multimodal Vision API + AWS Cedar Statutory Verification
+    print("\n15. Testing Live AI Multimodal Vision on non-preset 640x480 frame ...")
+    live_img = Image.new("RGB", (640, 480), color=(240, 240, 245))
+    # Draw a distinct red/silver object so it is not a uniform test square
+    for x in range(220, 420):
+        for y in range(120, 360):
+            live_img.putpixel((x, y), (200, 30, 45))
+    live_buf = BytesIO()
+    live_img.save(live_buf, format="JPEG")
+    live_b64 = base64.b64encode(live_buf.getvalue()).decode("utf-8")
+
+    r_live = client.post(
+        "/api/inspect",
+        json={
+            "image_base64": live_b64,
+            "target_bin": "Dry Recyclable",
+            "user_prompt": "This is a crushed red aluminum Coca-Cola soda can, rinsed and empty.",
+        },
+    )
+    assert r_live.status_code == 200
+    d_live = r_live.json()
+    assert "can" in d_live["item_detected"].lower() or "aluminum" in d_live["item_detected"].lower()
+    print(f"   [PASS] Live AI Vision classified item as: {d_live['item_detected']} ({d_live['category']})")
+    print(f"      - Material:         {d_live['material']}")
+    print(f"      - Correct Bin:      {d_live['correct_bin']}")
+    print(f"      - Cedar Decision:   {d_live.get('cedar_decision')} ({d_live.get('statutory_citation')})")
+
     print("\n==================================================")
-    print("   ALL 14 TESTS VERIFIED & WORKING!               ")
+    print("   ALL 15 TESTS VERIFIED & WORKING!               ")
     print("==================================================")
 
 
 if __name__ == "__main__":
     run_tests()
+

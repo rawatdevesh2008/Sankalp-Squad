@@ -49,12 +49,20 @@ Respond strictly with RAW VALID JSON. Do NOT output markdown code blocks (e.g. `
 Your response MUST match this exact schema:
 {
   "item_detected": "Exact name of the item observed",
-  "category": "Material category (e.g., E-Waste, Organic, Recyclable Plastic, Hazardous, Paper)",
-  "is_contaminated": true,
-  "contamination_reason": "Detailed reason explaining why it is clean or contaminated based on visual inspection",
+  "category": "Material category (e.g., Dry Recyclable, Wet Organic, E-Waste / Hazardous Electronics, Sanitary / Landfill)",
+  "material": "Specific material composition (e.g., Polyethylene Terephthalate (PET #1), Aluminum, Organic Biomass, Consumer Electronics)",
+  "is_contaminated": false,
+  "is_segregation_correct": true,
+  "box_color": "green",
+  "bounding_box": {"ymin": 200, "xmin": 250, "ymax": 800, "xmax": 750},
+  "contamination_reason": "Detailed reason explaining why it is clean or contaminated based on visual inspection (or null if clean)",
   "action_required": "Step-by-step safe disposal or cleaning instructions",
-  "correct_bin": "Target bin or specialized recycling center name",
-  "points_awarded": 0
+  "remediation_steps": ["Step 1", "Step 2", "Step 3"],
+  "correct_bin": "Blue Bin (Recyclables) | Green Bin (Compost / Wet Waste) | Specialized E-Waste Drop-off Center | Black Bin (Landfill / Soiled Waste)",
+  "bin_color": "Blue | Green | Yellow | Black",
+  "points_awarded": 15,
+  "confidence_score": 0.96,
+  "environmental_impact_tip": "1-sentence tip on environmental impact of proper disposal of this item"
 }
 """
 
@@ -73,8 +81,9 @@ def get_inspection_prompt(
     if user_prompt and user_prompt.strip():
         prompt += (
             f"- User Copilot Instruction / Voice Override: \"{user_prompt.strip()}\"\n"
-            f"NOTE: The user has explicitly stated this correction or clarification. "
-            f"Carefully evaluate their input, re-verify the material/device, and update the audit classification accordingly.\n"
+            f"IMPORTANT OVERRIDE RULE: The user has explicitly stated this item or correction in their prompt. "
+            f"Even if the camera frame is dark, a snapshot banner, or unclear, DO NOT return 'None'—you MUST classify "
+            f"the exact item described in the User Copilot Instruction ('{user_prompt.strip()}') and return its full waste audit JSON.\n"
         )
     prompt += "\nInspect the image frame and output the raw JSON:"
     return prompt

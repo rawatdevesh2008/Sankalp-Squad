@@ -26,3 +26,7 @@ services:
         sync: false
       - key: AWS_SESSION_TOKEN
         sync: false
+      - key: GEMINI_MODEL_ID
+        value: gemini-3.6-flash
+      - key: GEMINI_API_KEY
+        sync: false
