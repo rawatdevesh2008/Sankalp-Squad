@@ -13,7 +13,7 @@ services:
       - key: AWS_REGION
         value: us-east-1
       - key: BEDROCK_MODEL_ID
-        value: anthropic.claude-3-5-sonnet-20250219-v1:0
+        value: anthropic.claude-3-5-sonnet-20240620-v1:0
       - key: DYNAMODB_TABLE_NAME
         value: ShieldBin_Scans
       - key: ENABLE_DYNAMODB_LOGGING

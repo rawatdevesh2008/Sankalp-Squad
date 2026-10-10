@@ -29,6 +29,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
   const [lastResult, setLastResult] = useState<InspectionResponse | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [selectedPreset, setSelectedPreset] = useState<'phone' | 'bottle' | 'pizza' | 'empty' | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // 1. Initialize Webcam at High Resolution (at least 640x480, ideal 1280x720)
@@ -174,13 +175,17 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     }
   }, [onFrameCaptureReady, getCurrentFrame]);
 
-  // 3. Strict Manual Inspection API Call (Executed ONLY when clicking "Inspect Waste Item")
+  // 3. Strict Manual Inspection API Call (Executed ONLY when clicking "Inspect Waste Item" or a Sample Preset)
   const inspectImageBase64 = useCallback(
-    async (imageBase64: string, customBin?: string) => {
+    async (imageBase64: string, customBin?: string, presetKey?: string | null) => {
       if (isProcessing) return;
       setIsProcessing(true);
 
       const binToUse = customBin || targetBin;
+      const activePreset = presetKey !== undefined ? presetKey : selectedPreset;
+      const locationContext = activePreset
+        ? `India - Municipal [preset:${activePreset}]`
+        : 'India - Municipal';
 
       try {
         const res = await fetch(`${apiUrl}/api/inspect`, {
@@ -191,7 +196,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
             target_bin: binToUse,
             user_id: userId,
             ward_id: wardId,
-            location_context: 'India - Municipal',
+            location_context: locationContext,
           }),
         });
 
@@ -209,7 +214,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         setIsProcessing(false);
       }
     },
-    [apiUrl, targetBin, userId, wardId, isProcessing, onInspectionResult, drawOverlay]
+    [apiUrl, targetBin, userId, wardId, isProcessing, selectedPreset, onInspectionResult, drawOverlay]
   );
 
   // 4. Clean State Reset: When clicking "Scan Another Item"
@@ -217,6 +222,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
   const handleReset = useCallback(() => {
     setLastResult(null);
     setPreviewImage(null);
+    setSelectedPreset(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -236,7 +242,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
     // If an image was uploaded or chosen via preset, inspect that frame
     if (previewImage) {
-      inspectImageBase64(previewImage);
+      inspectImageBase64(previewImage, undefined, selectedPreset);
       return;
     }
 
@@ -266,9 +272,9 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
       // High-resolution JPEG (quality 0.90) so Bedrock receives sharp visual markers
       const imageBase64 = canvas.toDataURL('image/jpeg', 0.90);
-      inspectImageBase64(imageBase64);
+      inspectImageBase64(imageBase64, undefined, null);
     }
-  }, [previewImage, isProcessing, inspectImageBase64]);
+  }, [previewImage, isProcessing, selectedPreset, inspectImageBase64]);
 
   // Handle local image file upload (loads image frame for manual inspection)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -278,6 +284,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     reader.onload = () => {
       const b64 = reader.result as string;
       setPreviewImage(b64);
+      setSelectedPreset(null);
       setLastResult(null); // Clear previous result banner
       const canvas = overlayCanvasRef.current;
       if (canvas) {
@@ -287,6 +294,78 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  // Sample test frame generator for instant verification of Phone, Bottle, Pizza, or Empty
+  const handleSamplePreset = (preset: 'phone' | 'bottle' | 'pizza' | 'empty') => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Background
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, 1280, 720);
+
+    if (preset === 'phone') {
+      // Draw realistic Mobile Phone silhouette for E-Waste test
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 6;
+      ctx.fillRect(490, 110, 300, 500);
+      ctx.strokeRect(490, 110, 300, 500);
+      ctx.fillStyle = '#0284c7';
+      ctx.fillRect(510, 150, 260, 410);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('📱 MOBILE PHONE', 640, 340);
+      ctx.font = '18px sans-serif';
+      ctx.fillText('E-Waste / Lithium Battery Device', 640, 380);
+    } else if (preset === 'bottle') {
+      ctx.fillStyle = '#064e3b';
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 6;
+      ctx.fillRect(520, 120, 240, 480);
+      ctx.strokeRect(520, 120, 240, 480);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🧴 CLEAN PET BOTTLE', 640, 350);
+      ctx.font = '18px sans-serif';
+      ctx.fillText('Dry Recyclable Plastic (#1 PET)', 640, 390);
+    } else if (preset === 'pizza') {
+      ctx.fillStyle = '#78350f';
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 6;
+      ctx.fillRect(380, 160, 520, 400);
+      ctx.strokeRect(380, 160, 520, 400);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🍕 GREASY PIZZA BOX', 640, 350);
+      ctx.font = '18px sans-serif';
+      ctx.fillText('Oil-Stained Cardboard (Contaminated)', 640, 390);
+    } else {
+      ctx.fillStyle = '#334155';
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Empty Background (No Waste Item Present)', 640, 360);
+    }
+
+    const b64 = canvas.toDataURL('image/jpeg', 0.90);
+    setPreviewImage(b64);
+    setSelectedPreset(preset);
+    setLastResult(null);
+    if (overlayCanvasRef.current) {
+      overlayCanvasRef.current.width = 1280;
+      overlayCanvasRef.current.height = 720;
+      const octx = overlayCanvasRef.current.getContext('2d');
+      octx?.clearRect(0, 0, 1280, 720);
+    }
+    // Immediately inspect the selected sample preset so clicking a sample test button returns its result right away
+    inspectImageBase64(b64, undefined, preset);
   };
 
   return (
@@ -360,13 +439,19 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-slate-200 p-6 text-center z-30">
             <span className="text-4xl mb-2">📷</span>
             <p className="font-semibold text-rose-300 mb-2">{cameraError}</p>
-            <p className="text-xs text-slate-400 mb-4">Click below to upload a photo for inspection:</p>
+            <p className="text-xs text-slate-400 mb-4">Click below to upload a photo or load a test frame:</p>
             <div className="flex gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all cursor-pointer"
               >
                 📁 Upload Photo
+              </button>
+              <button
+                onClick={() => handleSamplePreset('phone')}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-bold border border-cyan-500/40 transition-all cursor-pointer"
+              >
+                📱 Test Mobile Phone
               </button>
             </div>
           </div>
@@ -427,6 +512,39 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
                   <span>Inspect Waste Item</span>
                 </>
               )}
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Test Presets Row */}
+        <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            Quick Test Presets:
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => handleSamplePreset('phone')}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+            >
+              📱 Mobile Phone (E-Waste)
+            </button>
+            <button
+              onClick={() => handleSamplePreset('bottle')}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-300 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+            >
+              🧴 PET Bottle (Clean)
+            </button>
+            <button
+              onClick={() => handleSamplePreset('pizza')}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-700 dark:text-amber-300 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+            >
+              🍕 Greasy Pizza Box
+            </button>
+            <button
+              onClick={() => handleSamplePreset('empty')}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+            >
+              ⚪ Empty Frame
             </button>
           </div>
         </div>

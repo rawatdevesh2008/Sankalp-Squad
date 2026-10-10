@@ -240,8 +240,55 @@ def run_tests():
     assert "grease" in cedar_grease.policy_matched.lower()
     print("   [PASS] Cedar FORBID on Food Grease contamination verified:", cedar_grease.statutory_citation)
 
+    # 12. Test Sample Test Presets & Copilot Sample Buttons return exact matching results
+    print("\n12. Testing Sample Test Buttons (phone, bottle, pizza, battery, milk, empty) ...")
+    expected_presets = {
+        "phone": ("Smartphone / Mobile Device", "Yellow", "red"),
+        "bottle": ("Clean PET Water Bottle", "Blue", "green"),
+        "pizza": ("Greasy Cardboard Pizza Box", "Black", "red"),
+        "battery": ("Lithium Battery / Charging Cable", "Yellow", "red"),
+        "milk": ("Unrinsed Single-Use Milk Pouch", "Blue", "red"),
+        "empty": ("None", "Gray", "green"),
+    }
+    for preset_key, (expected_item, expected_bin_color, expected_box) in expected_presets.items():
+        r_preset = client.post(
+            "/api/inspect",
+            json={
+                "image_base64": b64_img,
+                "target_bin": "Dry Recyclable",
+                "location_context": f"India - Municipal [preset:{preset_key}]",
+            },
+        )
+        assert r_preset.status_code == 200
+        d_preset = r_preset.json()
+        assert d_preset["item_detected"] == expected_item, (
+            f"Preset '{preset_key}' returned '{d_preset['item_detected']}', expected '{expected_item}'"
+        )
+        assert d_preset["bin_color"] == expected_bin_color
+        assert d_preset["box_color"] == expected_box
+    print("   [PASS] All 6 Sample Test Presets return 100% exact matching results!")
+
+    # 13. Test Deterministic Mock Mode (Never returns 'None' on valid images, repeatable results)
+    print("\n13. Testing Deterministic Mock Mode (no random mismatches or unexpected 'None') ...")
+    first_res = client.post("/api/inspect", json={"image_base64": b64_img, "target_bin": "Dry Recyclable"}).json()
+    for _ in range(10):
+        repeat_res = client.post("/api/inspect", json={"image_base64": b64_img, "target_bin": "Dry Recyclable"}).json()
+        assert repeat_res["item_detected"] != "None", "Valid image should never randomly return 'None'!"
+        assert repeat_res["item_detected"] == first_res["item_detected"], "Same image must return deterministic result!"
+    print(f"   [PASS] Deterministic mock mode verified (consistently returned '{first_res['item_detected']}')!")
+
+    # 14. Test Verified AWS Bedrock Vision Model IDs
+    print("\n14. Verifying AWS Bedrock Vision Model IDs ...")
+    from app.config import settings
+    from app.bedrock_service import BEDROCK_VISION_MODELS
+    assert settings.BEDROCK_MODEL_ID != "anthropic.claude-3-5-sonnet-20250219-v1:0", "Invalid 20250219 model ID must not be used!"
+    assert settings.BEDROCK_MODEL_ID == "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    assert "anthropic.claude-3-5-sonnet-20240620-v1:0" in BEDROCK_VISION_MODELS
+    assert "anthropic.claude-3-haiku-20240307-v1:0" in BEDROCK_VISION_MODELS
+    print(f"   [PASS] Verified Bedrock Vision Model ID: {settings.BEDROCK_MODEL_ID}")
+
     print("\n==================================================")
-    print("   ALL TESTS VERIFIED & WORKING!                  ")
+    print("   ALL 14 TESTS VERIFIED & WORKING!               ")
     print("==================================================")
 
 

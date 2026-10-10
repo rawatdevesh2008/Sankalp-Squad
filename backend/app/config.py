@@ -10,14 +10,19 @@ class Settings:
     AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
     AWS_SESSION_TOKEN: str = os.getenv("AWS_SESSION_TOKEN", "")
     
-    # Bedrock Model ID
-    # Options:
-    # anthropic.claude-3-5-sonnet-20250219-v1:0 (Claude 3.5 Sonnet v2)
-    # us.anthropic.claude-3-5-sonnet-20241022-v2:0 (US cross-region inference profile)
-    # anthropic.claude-3-5-sonnet-20240620-v1:0 (Claude 3.5 Sonnet v1)
-    # anthropic.claude-3-haiku-20240307-v1:0 (Claude 3 Haiku for ultra-low latency)
-    BEDROCK_MODEL_ID: str = os.getenv(
-        "BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20250219-v1:0"
+    # Bedrock Model ID (Must support multimodal image input)
+    # Verified AWS Bedrock Vision Models:
+    # - anthropic.claude-3-5-sonnet-20240620-v1:0 (Claude 3.5 Sonnet v1 - On-Demand Vision)
+    # - us.anthropic.claude-3-5-sonnet-20241022-v2:0 (Claude 3.5 Sonnet v2 - US Cross-Region Profile)
+    # - anthropic.claude-3-haiku-20240307-v1:0 (Claude 3 Haiku Vision - Fast On-Demand)
+    # - anthropic.claude-3-sonnet-20240229-v1:0 (Claude 3 Sonnet Vision)
+    _raw_model_id: str = os.getenv(
+        "BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    ).strip()
+    BEDROCK_MODEL_ID: str = (
+        "anthropic.claude-3-5-sonnet-20240620-v1:0"
+        if _raw_model_id in ("", "anthropic.claude-3-5-sonnet-20250219-v1:0")
+        else _raw_model_id
     )
     
     # DynamoDB Audit Logging
