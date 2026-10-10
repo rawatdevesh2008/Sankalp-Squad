@@ -58,8 +58,7 @@
             </select>
           </div>
           <div style="display: flex; gap: 8px;">
-            <button id="toggleAuto">Auto-Scan: ON</button>
-            <button id="scanBtn" class="primary">Scan Now</button>
+            <button id="scanBtn" class="primary">Inspect Waste Item</button>
           </div>
         </div>
 
@@ -119,9 +118,7 @@
     const capCtx = captureCanvas.getContext('2d');
     const targetBinSelect = document.getElementById('targetBin');
     const scanBtn = document.getElementById('scanBtn');
-    const toggleAutoBtn = document.getElementById('toggleAuto');
 
-    let autoScan = true;
     let isProcessing = false;
 
     // Start Webcam
@@ -220,16 +217,6 @@
     }
 
     scanBtn.addEventListener('click', captureFrame);
-    toggleAutoBtn.addEventListener('click', () => {
-      autoScan = !autoScan;
-      toggleAutoBtn.innerText = autoScan ? 'Auto-Scan: ON' : 'Auto-Scan: PAUSED';
-      toggleAutoBtn.style.color = autoScan ? '#4ade80' : '#94a3b8';
-    });
-
-    // 2.5-second interval loop
-    setInterval(() => {
-      if (autoScan) captureFrame();
-    }, 2500);
   </script>
 </body>
 </html>

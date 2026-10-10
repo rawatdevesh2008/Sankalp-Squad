@@ -21,32 +21,37 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [targetBin, setTargetBin] = useState('Dry Recyclable');
-  const [autoScan, setAutoScan] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<InspectionResponse | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 1. Initialize Webcam
+  // 1. Initialize Webcam at High Resolution (at least 640x480, ideal 1280x720)
   useEffect(() => {
     let stream: MediaStream | null = null;
 
     async function startCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'environment' },
+          video: {
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
+            facingMode: 'environment',
+          },
           audio: false,
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          await videoRef.current.play().catch(() => {});
           setIsStreaming(true);
           setCameraError(null);
         }
       } catch (err: any) {
         console.error('Camera access error:', err);
-        setCameraError('Webcam unavailable or permission denied. You can still test using Upload Photo or Sample Presets below.');
+        setCameraError(
+          'Webcam unavailable or permission denied. You can test manually using Upload Photo or Sample Presets below.'
+        );
       }
     }
 
@@ -58,6 +63,14 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       }
     };
   }, []);
+
+  // Update overlay canvas size when video dimensions are known
+  const handleVideoMetadataLoaded = () => {
+    if (videoRef.current && overlayCanvasRef.current) {
+      overlayCanvasRef.current.width = videoRef.current.videoWidth || 640;
+      overlayCanvasRef.current.height = videoRef.current.videoHeight || 480;
+    }
+  };
 
   // 2. Draw Green / Red Bounding Box on Overlay Canvas
   const drawOverlay = useCallback((result: InspectionResponse) => {
@@ -120,7 +133,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     ctx.fillText(labelText, x + 8, Math.max(fontSize + 4, y - 8));
   }, []);
 
-  // Core Inspection API Call
+  // 3. Strict Manual Inspection API Call (Executed ONLY when clicking "Inspect Waste Item")
   const inspectImageBase64 = useCallback(
     async (imageBase64: string, customBin?: string) => {
       if (isProcessing) return;
@@ -158,40 +171,65 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     [apiUrl, targetBin, userId, wardId, isProcessing, onInspectionResult, drawOverlay]
   );
 
-  // 3. Reset / Scan Another Item Handler
+  // 4. Clean State Reset: When clicking "Scan Another Item"
+  // Completely clear the previous result banner and show the live camera feed ready for the next snapshot
   const handleReset = useCallback(() => {
     setLastResult(null);
     setPreviewImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     const canvas = overlayCanvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
     }
+    if (videoRef.current && videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+    }
   }, []);
 
-  // Capture Frame from Live Video and Dispatch to Backend
+  // 5. High-Resolution Canvas Capture & Manual Trigger
   const captureAndInspect = useCallback(async () => {
+    if (isProcessing) return;
+
+    // If an image was uploaded or chosen via preset, inspect that frame
     if (previewImage) {
       inspectImageBase64(previewImage);
       return;
     }
 
-    if (!videoRef.current || !canvasRef.current || isProcessing) return;
+    if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
-    canvas.width = 640;
-    canvas.height = 480;
+    // High-Resolution Capture: use actual video dimensions (at least 640x480)
+    const captureWidth = Math.max(video.videoWidth || 640, 640);
+    const captureHeight = Math.max(video.videoHeight || 480, 480);
+
+    canvas.width = captureWidth;
+    canvas.height = captureHeight;
+
+    // Synchronize overlay canvas dimensions as well
+    if (overlayCanvasRef.current) {
+      overlayCanvasRef.current.width = captureWidth;
+      overlayCanvasRef.current.height = captureHeight;
+    }
+
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageBase64 = canvas.toDataURL('image/jpeg', 0.75);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(video, 0, 0, captureWidth, captureHeight);
+
+      // High-resolution JPEG (quality 0.90) so Bedrock receives sharp visual markers
+      const imageBase64 = canvas.toDataURL('image/jpeg', 0.90);
       inspectImageBase64(imageBase64);
     }
   }, [previewImage, isProcessing, inspectImageBase64]);
 
-  // Handle local image file upload
+  // Handle local image file upload (loads image frame for manual inspection)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -199,143 +237,141 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     reader.onload = () => {
       const b64 = reader.result as string;
       setPreviewImage(b64);
-      inspectImageBase64(b64);
+      setLastResult(null); // Clear previous result banner
+      const canvas = overlayCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      }
     };
     reader.readAsDataURL(file);
-    // Reset file input so same file can be selected again
     e.target.value = '';
   };
 
-  // Helper to generate and inspect simulated sample waste items
+  // Helper to load high-resolution simulated sample waste item frames
   const handleSampleTest = (type: 'bottle' | 'pizza' | 'phone' | 'battery' | 'milk' | 'empty') => {
     const c = document.createElement('canvas');
-    c.width = 640;
-    c.height = 480;
+    c.width = 1280;
+    c.height = 720;
     const ctx = c.getContext('2d');
     if (!ctx) return;
 
     if (type === 'phone') {
       // Draw simulated Mobile Phone (E-Waste / Hazardous)
       ctx.fillStyle = '#090d16';
-      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillRect(0, 0, 1280, 720);
       // Phone Body
       ctx.fillStyle = '#1e293b';
       ctx.beginPath();
       if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(240, 90, 160, 300, 24);
+        (ctx as any).roundRect(480, 120, 320, 520, 32);
       } else {
-        ctx.rect(240, 90, 160, 300);
+        ctx.rect(480, 120, 320, 520);
       }
       ctx.fill();
       // Phone Screen
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
       if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(248, 105, 144, 270, 14);
+        (ctx as any).roundRect(496, 140, 288, 480, 20);
       } else {
-        ctx.rect(248, 105, 144, 270);
+        ctx.rect(496, 140, 288, 480);
       }
       ctx.fill();
       // Camera bump
       ctx.fillStyle = '#334155';
       ctx.beginPath();
-      ctx.arc(268, 125, 10, 0, Math.PI * 2);
+      ctx.arc(540, 175, 16, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 28px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Smartphone', 320, 240);
-      ctx.font = '12px sans-serif';
+      ctx.fillText('Smartphone / Mobile Device', 640, 370);
+      ctx.font = '18px sans-serif';
       ctx.fillStyle = '#94a3b8';
-      ctx.fillText('Lithium Battery inside', 320, 265);
+      ctx.fillText('Lithium-ion Battery & Heavy Metals Inside', 640, 410);
       setTargetBin('Dry Recyclable');
     } else if (type === 'bottle') {
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillRect(0, 0, 1280, 720);
       ctx.fillStyle = '#38bdf8';
       ctx.beginPath();
       if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(260, 100, 120, 280, 24);
+        (ctx as any).roundRect(520, 160, 240, 460, 36);
       } else {
-        ctx.rect(260, 100, 120, 280);
+        ctx.rect(520, 160, 240, 460);
       }
       ctx.fill();
       ctx.fillStyle = '#0284c7';
-      ctx.fillRect(295, 70, 50, 30);
+      ctx.fillRect(590, 110, 100, 50);
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 20px sans-serif';
+      ctx.font = 'bold 30px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Clean PET Water Bottle', 320, 240);
+      ctx.fillText('Clean PET Water Bottle', 640, 380);
       setTargetBin('Dry Recyclable');
     } else if (type === 'pizza') {
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillRect(0, 0, 1280, 720);
       ctx.fillStyle = '#d97706';
-      ctx.fillRect(180, 120, 280, 240);
+      ctx.fillRect(360, 180, 560, 400);
       ctx.fillStyle = '#dc2626';
       ctx.beginPath();
-      ctx.arc(280, 220, 40, 0, Math.PI * 2);
-      ctx.arc(360, 260, 50, 0, Math.PI * 2);
+      ctx.arc(560, 360, 70, 0, Math.PI * 2);
+      ctx.arc(720, 420, 80, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 20px sans-serif';
+      ctx.font = 'bold 32px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Greasy Pizza Box', 320, 240);
+      ctx.fillText('Greasy Pizza Box', 640, 390);
       setTargetBin('Dry Recyclable');
     } else if (type === 'battery') {
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillRect(0, 0, 1280, 720);
       ctx.fillStyle = '#475569';
       ctx.beginPath();
       if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(240, 160, 160, 160, 16);
+        (ctx as any).roundRect(480, 220, 320, 320, 24);
       } else {
-        ctx.rect(240, 160, 160, 160);
+        ctx.rect(480, 220, 320, 320);
       }
       ctx.fill();
       ctx.fillStyle = '#eab308';
-      ctx.fillRect(300, 140, 40, 20);
+      ctx.fillRect(600, 180, 80, 40);
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 30px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Lithium Battery / Cable', 320, 240);
+      ctx.fillText('Lithium Battery / Cable', 640, 390);
       setTargetBin('Dry Recyclable');
     } else if (type === 'milk') {
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillRect(0, 0, 1280, 720);
       ctx.fillStyle = '#e2e8f0';
-      ctx.fillRect(220, 120, 200, 240);
+      ctx.fillRect(440, 180, 400, 420);
       ctx.fillStyle = '#3b82f6';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 30px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Unrinsed Milk Pouch', 320, 240);
+      ctx.fillText('Unrinsed Milk Pouch', 640, 390);
       setTargetBin('Dry Recyclable');
     } else {
       // Empty / No Object scenario
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillRect(0, 0, 1280, 720);
       ctx.fillStyle = '#334155';
-      ctx.font = '16px sans-serif';
+      ctx.font = '24px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('[Empty Viewfinder Frame - No Item]', 320, 240);
+      ctx.fillText('[Empty Viewfinder Frame - No Item]', 640, 360);
       setTargetBin('Dry Recyclable');
     }
 
-    const b64 = c.toDataURL('image/jpeg', 0.85);
+    const b64 = c.toDataURL('image/jpeg', 0.90);
     setPreviewImage(b64);
-    inspectImageBase64(b64);
+    setLastResult(null); // Clear previous result banner
+    const canvas = overlayCanvasRef.current;
+    if (canvas) {
+      const overlayCtx = canvas.getContext('2d');
+      overlayCtx?.clearRect(0, 0, canvas.width, canvas.height);
+    }
   };
-
-  // 4. Enforce 2.5-Second Throttled Auto-Scan Loop (only if using live webcam)
-  useEffect(() => {
-    if (!autoScan || !isStreaming || previewImage) return;
-
-    const interval = setInterval(() => {
-      captureAndInspect();
-    }, 2500);
-
-    return () => clearInterval(interval);
-  }, [autoScan, isStreaming, previewImage, captureAndInspect]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -353,12 +389,13 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         {previewImage ? (
           <img
             src={previewImage}
-            alt="Sample Frame"
+            alt="Inspection Frame"
             className="w-full h-full object-contain bg-slate-950"
           />
         ) : (
           <video
             ref={videoRef}
+            onLoadedMetadata={handleVideoMetadataLoaded}
             playsInline
             muted
             className="w-full h-full object-cover"
@@ -373,7 +410,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
           className="absolute inset-0 w-full h-full pointer-events-none z-10"
         />
 
-        {/* Hidden processing canvas */}
+        {/* Hidden high-res capture canvas */}
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Status Bar Overlay */}
@@ -392,8 +429,8 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
               {isProcessing
                 ? 'Auditing with Bedrock...'
                 : previewImage
-                ? 'Uploaded Frame Active'
-                : 'Live Stream (2.5s interval)'}
+                ? 'Frame Loaded • Ready to Inspect'
+                : 'Live Camera • Manual Snap Ready'}
             </span>
           </div>
 
@@ -411,13 +448,13 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all cursor-pointer"
               >
                 📁 Upload Photo
               </button>
               <button
                 onClick={() => handleSampleTest('bottle')}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-bold border border-slate-700"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-bold border border-slate-700 cursor-pointer"
               >
                 🧴 Test Bottle
               </button>
@@ -426,7 +463,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         )}
       </div>
 
-      {/* Controller Buttons */}
+      {/* Controller Buttons: Strict Manual Trigger Bar */}
       <div className="glass-panel rounded-xl p-3 sm:p-4 flex flex-col gap-3 max-w-2xl mx-auto w-full border border-slate-200 dark:border-slate-800 transition-all">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -436,7 +473,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
             <select
               value={targetBin}
               onChange={(e) => setTargetBin(e.target.value)}
-              className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white rounded-lg px-2.5 sm:px-3 py-1.5 focus:outline-none focus:border-emerald-500 w-full sm:w-auto"
+              className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white rounded-lg px-2.5 sm:px-3 py-1.5 focus:outline-none focus:border-emerald-500 w-full sm:w-auto font-medium"
             >
               <option value="Dry Recyclable">Blue Bin (Dry Recyclable)</option>
               <option value="Wet Organic">Green Bin (Wet Organic)</option>
@@ -447,15 +484,8 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             {previewImage && isStreaming && (
               <button
-                onClick={() => {
-                  setPreviewImage(null);
-                  const canvas = overlayCanvasRef.current;
-                  if (canvas) {
-                    const ctx = canvas.getContext('2d');
-                    ctx?.clearRect(0, 0, canvas.width, canvas.height);
-                  }
-                }}
-                className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-200 dark:bg-slate-800 text-cyan-700 dark:text-cyan-300 hover:bg-slate-300 dark:hover:bg-slate-700 border border-cyan-500/30 flex-1 sm:flex-initial cursor-pointer"
+                onClick={handleReset}
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 text-cyan-700 dark:text-cyan-300 hover:bg-slate-300 dark:hover:bg-slate-700 border border-cyan-500/30 flex-1 sm:flex-initial cursor-pointer transition-all"
               >
                 📹 Live Camera
               </button>
@@ -463,29 +493,30 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 flex-1 sm:flex-initial cursor-pointer"
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 flex-1 sm:flex-initial cursor-pointer"
             >
               <span>📁</span>
               <span>Upload Photo</span>
             </button>
 
-            <button
-              onClick={() => setAutoScan(!autoScan)}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex-1 sm:flex-initial cursor-pointer ${
-                autoScan && !previewImage
-                  ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
-                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              {autoScan && !previewImage ? 'Auto-Scan: ON' : 'Auto-Scan: PAUSED'}
-            </button>
-
+            {/* Primary Action Button: Inspect Waste Item */}
             <button
               onClick={captureAndInspect}
               disabled={isProcessing}
-              className="px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50 flex-1 sm:flex-initial cursor-pointer"
+              id="inspect-waste-btn"
+              className="px-4 sm:px-6 py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial"
             >
-              {isProcessing ? 'Analyzing...' : 'Scan Now'}
+              {isProcessing ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Auditing with Bedrock...</span>
+                </>
+              ) : (
+                <>
+                  <span>📸</span>
+                  <span>Inspect Waste Item</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -493,7 +524,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         {/* Quick Test Presets Row */}
         <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold shrink-0">
-            Quick Test Presets:
+            Quick Test Presets (Load & Inspect):
           </span>
           <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 w-full sm:w-auto">
             <button

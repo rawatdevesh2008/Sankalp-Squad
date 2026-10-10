@@ -42,12 +42,12 @@ export const InspectionResult: React.FC<InspectionResultProps> = ({
           </h3>
 
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-            {result?.action_required || 'Please place an item clearly in front of the camera.'}
+            {result?.action_required || 'Position an item clearly in front of the camera lens, then click "Inspect Waste Item".'}
           </p>
 
           <div className="mt-4 flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 px-3 py-1 rounded-full bg-slate-200/60 dark:bg-slate-900/80 border border-slate-300 dark:border-slate-800 font-mono">
             <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-            <span>{isScanning ? 'AI Auditing Frame in Real-time...' : 'High-Confidence Object Verification Active'}</span>
+            <span>{isScanning ? 'Auditing with Bedrock...' : 'Ready for Manual Snapshot'}</span>
           </div>
         </div>
       </div>
