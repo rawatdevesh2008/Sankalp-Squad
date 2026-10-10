@@ -48,38 +48,38 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30">
       {/* Top Navbar */}
-      <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-xl">
+      <header className="border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-lg sm:text-xl shrink-0">
               🛡️
             </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+            <div className="truncate">
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
                 ShieldBin
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">
                   Track 03
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-400">Source-Level Waste & Contamination Inspector</p>
+              <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Source-Level Waste & Contamination Inspector</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-mono px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900/90 border border-slate-800">
               <span
-                className={`w-2 h-2 rounded-full ${
-                  backendStatus === 'online' ? 'bg-emerald-400' : 'bg-rose-400 animate-pulse'
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  backendStatus === 'online' ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-rose-400 animate-pulse'
                 }`}
               />
               <span className="text-slate-300">
-                API: {backendStatus === 'online' ? 'App Runner (Live)' : 'Disconnected'}
+                <span className="hidden xs:inline">API: </span>{backendStatus === 'online' ? 'Live' : 'Offline'}
               </span>
             </div>
 
-            <span className="text-xs text-slate-400 hidden md:inline">
+            <span className="text-xs text-slate-400 hidden lg:inline">
               AWS Bedrock • Claude 3.5 Sonnet
             </span>
           </div>
@@ -87,10 +87,10 @@ export function App() {
       </header>
 
       {/* Main Content Layout */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 lg:gap-8 items-start">
           {/* Left/Main Column: Webcam Feed & Contamination Card */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
+          <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-5 sm:gap-6 w-full">
             <CameraInspector
               apiUrl={API_URL}
               onInspectionResult={handleInspectionResult}
@@ -100,37 +100,37 @@ export function App() {
           </div>
 
           {/* Right Column: Leaderboard & DynamoDB Stats */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-5 sm:gap-6 w-full">
             <ScoreBoard score={userScore} isLoading={isScoreLoading} />
 
             {/* Indian SWM 2016 Guidelines Quick Card */}
-            <div className="glass-panel rounded-2xl p-6 border border-slate-800">
-              <h4 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2">
+            <div className="glass-panel rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-lg">
+              <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-2">
                 📋 Municipal Waste Guidelines
               </h4>
-              <ul className="space-y-3 text-xs text-slate-300">
+              <ul className="space-y-2.5 sm:space-y-3 text-xs text-slate-300">
                 <li className="flex items-start gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0 mt-0.5" />
+                  <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-blue-500 shrink-0 mt-1" />
                   <div>
-                    <strong className="text-white">Blue Bin (Dry Recyclables):</strong> Clean paper, cardboard, plastics, cans. <em>No grease or liquids!</em>
+                    <strong className="text-white">Blue Bin (Dry Recyclables):</strong> Clean paper, cardboard, plastics, cans. <span className="text-blue-300 italic block sm:inline">Must be free of food grease!</span>
                   </div>
                 </li>
                 <li className="flex items-start gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-emerald-500 shrink-0 mt-0.5" />
+                  <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-500 shrink-0 mt-1" />
                   <div>
-                    <strong className="text-white">Green Bin (Wet Organic):</strong> Fruit/vegetable peels, food scraps, tea leaves.
+                    <strong className="text-white">Green Bin (Wet Organic):</strong> Fruit/vegetable peels, leftovers, compostable food.
                   </div>
                 </li>
                 <li className="flex items-start gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-amber-400 shrink-0 mt-0.5" />
+                  <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-amber-400 shrink-0 mt-1" />
                   <div>
-                    <strong className="text-white">Yellow Bin (E-Waste):</strong> Old electronics, charging cables, batteries.
+                    <strong className="text-white">Yellow Bin (E-Waste):</strong> Old electronics, charging cables, lithium batteries.
                   </div>
                 </li>
                 <li className="flex items-start gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-slate-700 shrink-0 mt-0.5" />
+                  <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-600 shrink-0 mt-1" />
                   <div>
-                    <strong className="text-white">Black Bin (Sanitary/Landfill):</strong> Greasy soiled paper, diapers, unrecyclable reject trash.
+                    <strong className="text-white">Black Bin (Sanitary / Landfill):</strong> Food-soiled cartons, dirty wraps, inert reject.
                   </div>
                 </li>
               </ul>
@@ -140,8 +140,8 @@ export function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-500">
-        Bharat Builds Tour • Event 02: Environmental Hacks (Oct 8–11, 2026) • Sankalp Squad
+      <footer className="border-t border-slate-900 bg-slate-950/80 py-3 sm:py-4 text-center text-[11px] sm:text-xs text-slate-500 px-4">
+        Bharat Builds Tour • Environmental Hacks (Oct 8–11, 2026) • Sankalp Squad
       </footer>
     </div>
   );
