@@ -380,12 +380,12 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       />
 
       {/* Viewport Frame */}
-      <div className="relative rounded-2xl overflow-hidden bg-slate-900 dark:bg-slate-950 border-2 border-slate-700/60 dark:border-slate-800 shadow-2xl aspect-[4/3] max-w-2xl mx-auto w-full transition-all">
+      <div className="relative rounded-2xl overflow-hidden bg-[#070A0F] border border-slate-800/80 shadow-2xl shadow-black/60 aspect-[4/3] max-w-2xl mx-auto w-full transition-all group">
         {previewImage ? (
           <img
             src={previewImage}
             alt="Inspection Frame"
-            className="w-full h-full object-contain bg-slate-950"
+            className="w-full h-full object-contain bg-[#070A0F]"
           />
         ) : (
           <video
@@ -409,10 +409,10 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Status Bar Overlay */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-20 pointer-events-none">
-          <div className="flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/60 text-xs text-white">
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-20 pointer-events-none gap-2">
+          <div className="flex items-center gap-2 bg-[#0B0F17]/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-800/80 text-xs text-white shadow-lg">
             <span
-              className={`w-2.5 h-2.5 rounded-full ${
+              className={`w-2 h-2 rounded-full ${
                 isProcessing
                   ? 'bg-amber-400 animate-ping'
                   : previewImage
@@ -420,36 +420,36 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
                   : 'bg-emerald-400'
               }`}
             />
-            <span>
+            <span className="font-mono text-[11px] sm:text-xs">
               {isProcessing
                 ? 'Auditing with Bedrock...'
                 : previewImage
-                ? 'Frame Loaded • Ready to Inspect'
-                : 'Live Camera • Manual Snap Ready'}
+                ? 'Frame Loaded • Ready'
+                : 'Live Camera • Active'}
             </span>
           </div>
 
-          <div className="bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/60 text-xs text-slate-300">
-            Target Bin: <strong className="text-white">{targetBin}</strong>
+          <div className="bg-[#0B0F17]/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-800/80 text-xs text-slate-300 font-mono shadow-lg">
+            Target: <strong className="text-emerald-400 font-bold">{targetBin}</strong>
           </div>
         </div>
 
         {/* Error Notification if camera unavailable and no preview */}
         {cameraError && !previewImage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-slate-200 p-6 text-center z-30">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070A0F]/95 text-slate-200 p-6 text-center z-30">
             <span className="text-4xl mb-2">📷</span>
-            <p className="font-semibold text-rose-300 mb-2">{cameraError}</p>
+            <p className="font-semibold text-rose-300 mb-2 text-sm">{cameraError}</p>
             <p className="text-xs text-slate-400 mb-4">Click below to upload a photo or load a test frame:</p>
             <div className="flex gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all cursor-pointer"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg transition-all cursor-pointer"
               >
                 📁 Upload Photo
               </button>
               <button
                 onClick={() => handleSamplePreset('phone')}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-bold border border-cyan-500/40 transition-all cursor-pointer"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-xl text-xs font-bold border border-cyan-500/40 transition-all cursor-pointer"
               >
                 📱 Test Mobile Phone
               </button>
@@ -458,17 +458,17 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         )}
       </div>
 
-      {/* Controller Buttons: Strict Manual Trigger Bar */}
-      <div className="glass-panel rounded-xl p-3 sm:p-4 flex flex-col gap-3 max-w-2xl mx-auto w-full border border-slate-200 dark:border-slate-800 transition-all">
+      {/* Controller Buttons Bar */}
+      <div className="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col gap-3.5 max-w-2xl mx-auto w-full border border-slate-200/80 dark:border-slate-800/70 shadow-xl transition-all">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <label className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold shrink-0">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <label className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider shrink-0 font-mono">
               Target Bin:
             </label>
             <select
               value={targetBin}
               onChange={(e) => setTargetBin(e.target.value)}
-              className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white rounded-lg px-2.5 sm:px-3 py-1.5 focus:outline-none focus:border-emerald-500 w-full sm:w-auto font-medium"
+              className="bg-slate-100 dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700/80 text-xs sm:text-sm text-slate-900 dark:text-white rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 w-full sm:w-auto font-medium transition-all"
             >
               <option value="Auto-Detect">Auto-Detect Stream</option>
               <option value="Dry Recyclable">Blue Bin (Dry Recyclable)</option>
@@ -476,11 +476,11 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap">
             {previewImage && isStreaming && (
               <button
                 onClick={handleReset}
-                className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 text-cyan-700 dark:text-cyan-300 hover:bg-slate-300 dark:hover:bg-slate-700 border border-cyan-500/30 flex-1 sm:flex-initial cursor-pointer transition-all"
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 text-cyan-700 dark:text-cyan-300 hover:bg-slate-300 dark:hover:bg-slate-700 border border-cyan-500/30 flex-1 sm:flex-initial cursor-pointer hover:-translate-y-0.5 active:scale-95 transition-all shadow-sm"
               >
                 📹 Live Camera
               </button>
@@ -488,7 +488,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 flex-1 sm:flex-initial cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 flex-1 sm:flex-initial cursor-pointer hover:-translate-y-0.5 active:scale-95 shadow-sm"
             >
               <span>📁</span>
               <span>Upload Photo</span>
@@ -499,7 +499,7 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
               onClick={captureAndInspect}
               disabled={isProcessing}
               id="inspect-waste-btn"
-              className="px-4 sm:px-6 py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial"
+              className="px-5 sm:px-6 py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/35 hover:-translate-y-0.5 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial"
             >
               {isProcessing ? (
                 <>
@@ -517,32 +517,32 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
         </div>
 
         {/* Quick Test Presets Row */}
-        <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider font-mono">
             Quick Test Presets:
           </span>
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => handleSamplePreset('phone')}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+              className="text-[11px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-slate-300 dark:border-cyan-500/30 hover:border-cyan-500/50 font-medium hover:-translate-y-0.5 active:scale-95 transition-all cursor-pointer shadow-sm"
             >
               📱 Mobile Phone (E-Waste)
             </button>
             <button
               onClick={() => handleSamplePreset('bottle')}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-300 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+              className="text-[11px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-slate-300 dark:border-emerald-500/30 hover:border-emerald-500/50 font-medium hover:-translate-y-0.5 active:scale-95 transition-all cursor-pointer shadow-sm"
             >
               🧴 PET Bottle (Clean)
             </button>
             <button
               onClick={() => handleSamplePreset('pizza')}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-700 dark:text-amber-300 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+              className="text-[11px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-slate-300 dark:border-amber-500/30 hover:border-amber-500/50 font-medium hover:-translate-y-0.5 active:scale-95 transition-all cursor-pointer shadow-sm"
             >
               🍕 Greasy Pizza Box
             </button>
             <button
               onClick={() => handleSamplePreset('empty')}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700 font-medium transition-colors cursor-pointer"
+              className="text-[11px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700 font-medium hover:-translate-y-0.5 active:scale-95 transition-all cursor-pointer shadow-sm"
             >
               ⚪ Empty Frame
             </button>
