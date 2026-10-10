@@ -101,30 +101,27 @@ def run_tests():
     print("   [PASS] 'No Object' JSON structure matches schema & defaults correctly!")
 
     # 5. Test InspectionResult Model with E-Waste / Mobile Phone
-    print("\n5. Testing InspectionResult with 'Mobile Phone' E-Waste Scenario ...")
+    print("\n5. Testing InspectionResult with 'Smartphone / Mobile Device' E-Waste Scenario ...")
     mobile_data = {
-        "item_detected": "Mobile Phone",
-        "category": "E-Waste / Hazardous",
+        "item_detected": "Smartphone / Mobile Device",
+        "category": "E-Waste / Hazardous Electronics",
         "is_contaminated": True,
         "is_segregation_correct": False,
         "box_color": "red",
         "bounding_box": {"ymin": 250, "xmin": 280, "ymax": 750, "xmax": 720},
-        "contamination_reason": "Contains hazardous lithium-ion batteries and heavy metals",
-        "correct_bin": "Specialized E-Waste Drop-off",
+        "contamination_reason": "Contains a lithium-ion battery, heavy metals (lead, mercury, cadmium), and circuit boards that release toxic leachate in landfills.",
+        "correct_bin": "Specialized E-Waste Drop-off Center",
         "bin_color": "Yellow",
-        "action_required": (
-            "DO NOT place in any standard bin. Hazardous materials must be taken to a "
-            "certified electronics recycling depot, manufacturer take-back program, or "
-            "specialized waste collection point."
-        ),
+        "action_required": "Do not place in household waste or recycling bins. Wipe personal data, remove accessories, and drop off at a certified e-waste recycling center or retail take-back program.",
         "points_awarded": 0
     }
     mobile_result = InspectionResult(**mobile_data)
-    assert mobile_result.item_detected == "Mobile Phone"
-    assert mobile_result.category == "E-Waste / Hazardous"
+    assert mobile_result.item_detected == "Smartphone / Mobile Device"
+    assert mobile_result.category == "E-Waste / Hazardous Electronics"
     assert mobile_result.is_contaminated is True
-    assert mobile_result.correct_bin == "Specialized E-Waste Drop-off"
-    print("   [PASS] 'Mobile Phone' E-Waste / Hazardous analysis validated!")
+    assert mobile_result.correct_bin == "Specialized E-Waste Drop-off Center"
+    assert mobile_result.points_awarded == 0
+    print("   [PASS] 'Smartphone / Mobile Device' E-Waste / Hazardous analysis validated!")
 
     # 6. Test GET /api/user/score
     print("\n6. Testing GET /api/user/score?user_id=household_402 ...")

@@ -36,22 +36,22 @@ MOCK_ITEMS = [
         "environmental_impact_tip": "Position the item centrally to evaluate its material and cleanliness."
     },
     {
-        "item_detected": "Mobile Phone",
-        "category": "E-Waste / Hazardous",
+        "item_detected": "Smartphone / Mobile Device",
+        "category": "E-Waste / Hazardous Electronics",
         "is_contaminated": True,
         "is_segregation_correct": False,
         "box_color": "red",
         "bounding_box": {"ymin": 250, "xmin": 280, "ymax": 750, "xmax": 720},
-        "contamination_reason": "Contains hazardous lithium-ion batteries and toxic heavy metals (lead, mercury, cadmium)",
-        "correct_bin": "Specialized E-Waste Drop-off",
+        "contamination_reason": "Contains a lithium-ion battery, heavy metals (lead, mercury, cadmium), and circuit boards that release toxic leachate in landfills.",
+        "correct_bin": "Specialized E-Waste Drop-off Center",
         "bin_color": "Yellow",
-        "action_required": "DO NOT place in any standard bin. Hazardous materials must be taken to a certified electronics recycling depot, manufacturer take-back program, or specialized waste collection point.",
+        "action_required": "Do not place in household waste or recycling bins. Wipe personal data, remove accessories, and drop off at a certified e-waste recycling center or retail take-back program.",
         "points_awarded": 0,
-        "material": "Electronics (Lithium-ion / Heavy Metals)",
+        "material": "Consumer Electronics (Lithium-ion Battery / Heavy Metals / Circuitry)",
         "remediation_steps": [
-            "Keep separate from all wet, dry, or sanitary household waste",
-            "Do not puncture, crush, or expose battery to heat",
-            "Hand over to authorized e-waste recycler or designated municipal e-waste kiosk"
+            "Do not place in household waste or recycling bins",
+            "Wipe personal data and remove accessories",
+            "Drop off at a certified e-waste recycling center or retail take-back program"
         ],
         "confidence_score": 0.99,
         "environmental_impact_tip": "Improper disposal of lithium batteries causes landfill fires and leaches toxic metals into groundwater."
@@ -298,14 +298,14 @@ class BedrockService:
 
             correct_bin = parsed_data.get("correct_bin")
             if not correct_bin:
-                correct_bin = "Specialized E-Waste Drop-off" if is_hazard else ("Blue Bin (Recyclables)" if is_segregation_correct else "Black Bin (Landfill / Soiled Waste)")
+                correct_bin = "Specialized E-Waste Drop-off Center" if is_hazard else ("Blue Bin (Recyclables)" if is_segregation_correct else "Black Bin (Landfill / Soiled Waste)")
 
             bin_color = parsed_data.get("bin_color")
             if not bin_color:
                 bin_color = "Yellow" if is_hazard else ("Blue" if is_segregation_correct else "Black")
 
             action_required = parsed_data.get("action_required") or (
-                "DO NOT place in any standard bin. Hazardous materials must be taken to a certified electronics recycling depot, manufacturer take-back program, or specialized waste collection point."
+                "Do not place in household waste or recycling bins. Wipe personal data, remove accessories, and drop off at a certified e-waste recycling center or retail take-back program."
                 if is_hazard else "Inspect and dispose cleanly according to municipal waste guidelines."
             )
 
