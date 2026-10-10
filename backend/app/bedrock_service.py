@@ -183,6 +183,7 @@ class BedrockService:
         media_type: str = "image/jpeg",
         target_bin: str = "Dry Recyclable",
         location_context: str = "India - Municipal",
+        user_prompt: Optional[str] = None,
     ) -> InspectionResult:
         """
         Inspects waste image using Amazon Bedrock Claude Vision.
@@ -191,11 +192,15 @@ class BedrockService:
         """
         if settings.USE_MOCK_BEDROCK or self._client is None:
             logger.info("Using mock simulation mode for inspection.")
-            return self._generate_mock_response(target_bin=target_bin)
+            return self._generate_mock_response(target_bin=target_bin, user_prompt=user_prompt)
 
         try:
             b64_image = base64.b64encode(image_bytes).decode("utf-8")
-            prompt_text = get_inspection_prompt(target_bin=target_bin, location_context=location_context)
+            prompt_text = get_inspection_prompt(
+                target_bin=target_bin,
+                location_context=location_context,
+                user_prompt=user_prompt,
+            )
 
             payload = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -339,18 +344,61 @@ class BedrockService:
             logger.warning(
                 f"AWS Bedrock error ({aws_err}). Falling back to simulation mode so development continues."
             )
-            return self._generate_mock_response(target_bin=target_bin, reason=f"Fallback (AWS: {str(aws_err)})")
+            return self._generate_mock_response(target_bin=target_bin, reason=f"Fallback (AWS: {str(aws_err)})", user_prompt=user_prompt)
         except Exception as ex:
             logger.error(f"Unexpected error in inspection: {ex}", exc_info=True)
-            return self._generate_mock_response(target_bin=target_bin, reason=f"Fallback (Error: {str(ex)})")
+            return self._generate_mock_response(target_bin=target_bin, reason=f"Fallback (Error: {str(ex)})", user_prompt=user_prompt)
 
     def _clean_and_parse_json(self, raw_text: str) -> Dict[str, Any]:
         """Safety checks to strip any accidental markdown code blocks and conversational text."""
         return clean_and_parse_json(raw_text)
 
-    def _generate_mock_response(self, target_bin: str = "Dry Recyclable", reason: Optional[str] = None) -> InspectionResult:
-        """Returns a high-fidelity simulation object with bounding box coordinates."""
-        item = random.choice(MOCK_ITEMS)
+    def _generate_mock_response(
+        self,
+        target_bin: str = "Dry Recyclable",
+        reason: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+    ) -> InspectionResult:
+        """Returns a high-fidelity simulation object with bounding box coordinates, accounting for user prompt override."""
+        prompt_lower = (user_prompt or "").lower()
+        if user_prompt and any(w in prompt_lower for w in ["lithium", "battery", "e-waste", "phone", "mobile", "charger", "electronic", "cable"]):
+            matched = next((m for m in MOCK_ITEMS if "battery" in m["item_detected"].lower() or "phone" in m["item_detected"].lower()), MOCK_ITEMS[1])
+            item = dict(matched)
+            if "battery" in prompt_lower or "lithium" in prompt_lower:
+                item["item_detected"] = "Lithium Battery Pack (Hazardous)"
+                item["category"] = "E-Waste / Hazardous Electronics"
+                item["is_contaminated"] = True
+                item["is_segregation_correct"] = False
+                item["box_color"] = "red"
+                item["correct_bin"] = "Specialized E-Waste Drop-off Center"
+                item["bin_color"] = "Yellow"
+                item["contamination_reason"] = f"Voice Override Applied ({user_prompt.strip()}): High fire-risk lithium battery detected. Must never enter municipal dry recycling bins."
+                item["action_required"] = "Tape terminals with non-conductive tape and deposit at a specialized e-waste drop-off kiosk."
+                item["points_awarded"] = 0
+            elif "phone" in prompt_lower or "mobile" in prompt_lower:
+                item["item_detected"] = "Smartphone / Mobile Device"
+                item["category"] = "E-Waste / Hazardous Electronics"
+                item["is_contaminated"] = True
+                item["is_segregation_correct"] = False
+                item["box_color"] = "red"
+                item["correct_bin"] = "Specialized E-Waste Drop-off Center"
+                item["bin_color"] = "Yellow"
+                item["contamination_reason"] = f"Voice Override Applied ({user_prompt.strip()}): Contains lithium-ion battery, circuit board, and heavy metals."
+                item["action_required"] = "Do not dispose in standard bins. Hand over to authorized e-waste recyclers."
+                item["points_awarded"] = 0
+        elif user_prompt and any(w in prompt_lower for w in ["greas", "pizza", "oil", "food soiled"]):
+            matched = next((m for m in MOCK_ITEMS if "pizza" in m["item_detected"].lower()), MOCK_ITEMS[3])
+            item = dict(matched)
+            item["contamination_reason"] = f"Voice Override Applied ({user_prompt.strip()}): Grease and food residue contaminate paper recycling."
+        elif user_prompt and any(w in prompt_lower for w in ["bottle", "clean", "plastic", "pet"]):
+            matched = next((m for m in MOCK_ITEMS if "bottle" in m["item_detected"].lower()), MOCK_ITEMS[2])
+            item = dict(matched)
+        elif user_prompt and any(w in prompt_lower for w in ["milk", "rinse", "pouch"]):
+            matched = next((m for m in MOCK_ITEMS if "milk" in m["item_detected"].lower()), MOCK_ITEMS[5])
+            item = dict(matched)
+        else:
+            item = random.choice(MOCK_ITEMS)
+
         engine_label = "ShieldBin Simulation Engine"
         if reason:
             engine_label += f" [{reason}]"

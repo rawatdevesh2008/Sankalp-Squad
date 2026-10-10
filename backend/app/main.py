@@ -18,6 +18,7 @@ from app.models import (
 )
 from app.bedrock_service import bedrock_service
 from app.dynamodb_service import dynamodb_service
+from app.cedar_service import cedar_engine
 from app.prompts import clean_and_parse_json
 
 # Configure logging
@@ -176,7 +177,8 @@ def root():
         "cloud_architecture": {
             "compute": "AWS App Runner",
             "foundation_model": f"Amazon Bedrock ({settings.BEDROCK_MODEL_ID})",
-            "database": f"Amazon DynamoDB ({settings.DYNAMODB_TABLE_NAME})"
+            "database": f"Amazon DynamoDB ({settings.DYNAMODB_TABLE_NAME})",
+            "policy_engine": "AWS Cedar (MoEFCC SWM 2016 & CPCB E-Waste Rules 2022)"
         }
     }
 
@@ -270,7 +272,7 @@ async def inspect_waste(payload: InspectRequest):
             logger.info("Decoded image bytes empty. Returning waiting state.")
             return get_waiting_state_result()
 
-        target_bin = payload.target_bin or "Dry Recyclable"
+        target_bin = payload.target_bin or "Auto-Detect"
         user_id = payload.user_id or "household_402"
         ward_id = payload.ward_id or "Ward-12 (Delhi)"
 
@@ -282,9 +284,32 @@ async def inspect_waste(payload: InspectRequest):
             media_type=media_type,
             target_bin=target_bin,
             location_context=payload.location_context or "India - Municipal",
+            user_prompt=payload.user_prompt,
         )
 
-        # 2. Log audit trail and update live user score in Amazon DynamoDB
+        # 2. AWS Cedar Statutory Policy Audit (MoEFCC SWM 2016 & CPCB E-Waste 2022)
+        cedar_eval = cedar_engine.evaluate(
+            target_bin=target_bin,
+            category=result.category,
+            item_detected=result.item_detected or "None",
+            is_contaminated=result.is_contaminated,
+            contamination_reason=result.contamination_reason,
+            user_id=user_id,
+        )
+
+        result.cedar_decision = cedar_eval.decision
+        result.cedar_policy_matched = cedar_eval.policy_matched
+        result.cedar_statutory_citation = cedar_eval.statutory_citation
+
+        # If Cedar returns FORBID, strictly enforce violation and red box
+        if cedar_eval.decision == "FORBID":
+            result.is_contaminated = True
+            result.is_segregation_correct = False
+            result.box_color = "red"
+            if not result.contamination_reason or "None" in result.contamination_reason:
+                result.contamination_reason = cedar_eval.legal_mandate
+
+        # 3. Log audit trail and update live user score in Amazon DynamoDB
         scan_id, updated_score = dynamodb_service.log_scan_and_update_score(
             scan_result=result.model_dump(),
             user_id=user_id,

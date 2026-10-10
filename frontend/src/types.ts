@@ -22,6 +22,7 @@ export interface InspectRequest {
   user_id?: string;
   ward_id?: string;
   location_context?: string;
+  user_prompt?: string;
 }
 
 export interface InspectionResponse {
@@ -43,6 +44,9 @@ export interface InspectionResponse {
   confidence_score: number;
   environmental_impact_tip?: string | null;
   engine_source: string;
+  cedar_decision?: 'PERMIT' | 'FORBID';
+  cedar_policy_matched?: string | null;
+  cedar_statutory_citation?: string | null;
   scan_id?: string | null;
   timestamp: string;
 }

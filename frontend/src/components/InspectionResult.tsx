@@ -145,6 +145,25 @@ export const InspectionResult: React.FC<InspectionResultProps> = ({
         </div>
       )}
 
+      {/* AWS Cedar Statutory Policy Badge */}
+      {result.cedar_statutory_citation && (
+        <div className="mt-3 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] font-mono">
+          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 min-w-0 pr-2">
+            <span className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0">🛡️ AWS Cedar:</span>
+            <span className="truncate">{result.cedar_statutory_citation}</span>
+          </div>
+          <span
+            className={`px-2 py-0.5 rounded text-[10px] font-black shrink-0 ${
+              result.cedar_decision === 'FORBID'
+                ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
+                : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40'
+            }`}
+          >
+            {result.cedar_decision || 'PERMIT'}
+          </span>
+        </div>
+      )}
+
       {/* Action Required Banner */}
       <div
         className={`mt-3.5 p-3.5 sm:p-4 rounded-xl border text-xs sm:text-sm font-semibold flex items-start gap-3 ${

@@ -1,7 +1,7 @@
 # Sankalp-Squad: ShieldBin
 ### Source-Level Waste & Contamination Inspector
 **Bharat Builds Tour: Environmental Hacks (Track 03 - Waste and Energy)**  
-Powered by **Amazon Bedrock (Claude 3.5 Sonnet Vision)** & **Amazon DynamoDB**, deployed on **AWS App Runner + AWS Amplify**.
+Powered by **Amazon Bedrock (Claude 3.5 Sonnet Vision)**, **AWS Cedar Policy Engine (Open-Source)** & **Amazon DynamoDB**.
 
 ---
 
@@ -11,11 +11,16 @@ Recycling systems fail at the source because mixed waste (e.g. food grease or un
 ## 💡 The Solution
 **ShieldBin** requires **zero custom hardware**—running directly on any smartphone or laptop webcam.
 Citizens or facility workers point their camera at their waste bin before disposal:
-1. **Live Detection & Contamination Audit:** Amazon Bedrock (Claude 3.5 Sonnet Vision) inspects the item for oil, moisture, leftover liquids, and material type.
-2. **Real-time Bounding Box Feedback:** 
-   - 🟢 **Green Bounding Box:** Clean recyclable / compostable verified.
-   - 🔴 **Red Bounding Box:** Cross-contamination detected (e.g. *"Greasy pizza box in dry bin — tear off clean lid, move greasy base to landfill"*).
-3. **Gamified Ward/Household Scores:** Automatically increments user points and tracks contamination violations prevented in **Amazon DynamoDB**.
+1. **Live Visual Feature Extraction:** Amazon Bedrock (Claude 3.5 Sonnet Vision) extracts item material markings, cleanliness, and oil/grease saturation.
+2. **Deterministic Law Enforcement via AWS Cedar Policy Engine:** Evaluates item attributes against official Government of India statutory mandates:
+   - *MoEFCC Solid Waste Management Rules, 2016 (Rule 15 - Source Segregation)*
+   - *CPCB E-Waste (Management) Rules, 2022/2024 (Schedule I - Lithium Battery & Electronics Ban)*
+   - *MoHUA Swachh Bharat Mission (SBM-U 2.0) 3-Bin Color Standards*
+3. **Real-time Bounding Box & Copilot Feedback:** 
+   - 🟢 **Green Bounding Box (PERMIT):** Clean recyclable / compostable verified.
+   - 🔴 **Red Bounding Box (FORBID):** Statutory cross-contamination detected.
+   - 🤖 **AI Copilot & Voice Override:** Citizens can type or speak corrections (via Web Speech API) to re-evaluate edge cases.
+4. **Gamified Ward/Household Scores:** Automatically increments user points and tracks contamination violations prevented in **Amazon DynamoDB**.
 
 ---
 
@@ -23,11 +28,12 @@ Citizens or facility workers point their camera at their waste bin before dispos
 
 ```mermaid
 graph LR
-    A[Webcam Stream] -->|Frame Base64| B[AWS App Runner: FastAPI]
-    B -->|InvokeModel| C[Amazon Bedrock: Claude 3.5 Sonnet]
-    C -->|Bounding Box & Contamination JSON| B
-    B -->|Log Scan & Points| D[(Amazon DynamoDB)]
-    B -->|Green/Red Box Overlay| A
+    A[Webcam Stream] -->|Frame Base64 & Voice Prompt| B[FastAPI Engine]
+    B -->|Visual Analysis| C[Amazon Bedrock: Claude 3.5 Sonnet]
+    C -->|Visual Attributes| D[AWS Cedar Policy Engine]
+    D -->|PERMIT / FORBID Verdict| B
+    B -->|Audit Log & Eco Points| E[(Amazon DynamoDB)]
+    B -->|Green/Red Box Overlay & Cedar Badge| A
 ```
 
 ---

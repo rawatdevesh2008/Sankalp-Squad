@@ -180,6 +180,66 @@ def run_tests():
     assert parsed_c["is_contaminated"] is True
     print("   [PASS] Markdown code blocks and conversational text stripped safely!")
 
+    # 10. Test Copilot Voice Override (user_prompt parameter)
+    print("\n10. Testing POST /api/inspect with Copilot user_prompt override ...")
+    copilot_payload = {
+        "image_base64": create_sample_test_image_base64(),
+        "user_prompt": "That's a lithium battery, not plastic...",
+        "target_bin": "Dry Recyclable",
+        "user_id": "household_402",
+        "ward_id": "Ward-12 (Delhi)"
+    }
+    r_copilot = client.post("/api/inspect", json=copilot_payload)
+    assert r_copilot.status_code == 200, f"Expected 200, got {r_copilot.status_code}"
+    copilot_res = r_copilot.json()
+    assert copilot_res["is_contaminated"] is True
+    assert "battery" in copilot_res["item_detected"].lower() or "lithium" in copilot_res["item_detected"].lower()
+    assert "e-waste" in copilot_res["correct_bin"].lower() or "e-waste" in copilot_res["category"].lower()
+    print("   [PASS] Copilot user_prompt override validated successfully!")
+    print(f"      - Item Detected:      {copilot_res['item_detected']}")
+    print(f"      - Category:           {copilot_res['category']}")
+    print(f"      - Correct Bin:        {copilot_res['correct_bin']}")
+    print(f"      - Box Color:          {copilot_res['box_color']}")
+
+    # 11. Test AWS Cedar Statutory Policy Engine (MoEFCC SWM 2016 & CPCB E-Waste 2022)
+    print("\n11. Testing AWS Cedar Policy Engine statutory verification ...")
+    from app.cedar_service import cedar_engine
+
+    # 11a: Test E-Waste hazard into Blue Bin -> FORBID
+    cedar_ewaste = cedar_engine.evaluate(
+        target_bin="Blue Bin (Dry Recyclable)",
+        category="E-Waste / Hazardous Electronics",
+        item_detected="Lithium Battery Pack",
+        is_contaminated=True,
+    )
+    assert cedar_ewaste.decision == "FORBID"
+    assert "cpcb" in cedar_ewaste.policy_matched.lower()
+    assert "e-waste" in cedar_ewaste.statutory_citation.lower()
+    print("   [PASS] Cedar FORBID on E-Waste hazard verified:", cedar_ewaste.statutory_citation)
+
+    # 11b: Test Clean PET Plastic into Blue Bin -> PERMIT
+    cedar_clean = cedar_engine.evaluate(
+        target_bin="Blue Bin (Dry Recyclable)",
+        category="Dry Recyclable",
+        item_detected="Clean PET Plastic Bottle",
+        is_contaminated=False,
+    )
+    assert cedar_clean.decision == "PERMIT"
+    assert "permit" in cedar_clean.policy_matched.lower()
+    print("   [PASS] Cedar PERMIT on Clean Dry Recyclable verified:", cedar_clean.statutory_citation)
+
+    # 11c: Test Food Grease on Cardboard into Blue Bin -> FORBID
+    cedar_grease = cedar_engine.evaluate(
+        target_bin="Dry Recyclable",
+        category="Sanitary / Landfill",
+        item_detected="Greasy Pizza Box",
+        is_contaminated=True,
+        contamination_reason="Grease-soaked cardboard base",
+    )
+    assert cedar_grease.decision == "FORBID"
+    assert "grease" in cedar_grease.policy_matched.lower()
+    print("   [PASS] Cedar FORBID on Food Grease contamination verified:", cedar_grease.statutory_citation)
+
     print("\n==================================================")
     print("   ALL TESTS VERIFIED & WORKING!                  ")
     print("==================================================")

@@ -7,6 +7,8 @@ interface CameraInspectorProps {
   onInspectionResult: (result: InspectionResponse) => void;
   userId: string;
   wardId: string;
+  externalResult?: InspectionResponse | null;
+  onFrameCaptureReady?: (getFrameFn: () => string | null) => void;
 }
 
 export const CameraInspector: React.FC<CameraInspectorProps> = ({
@@ -14,13 +16,15 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
   onInspectionResult,
   userId,
   wardId,
+  externalResult,
+  onFrameCaptureReady,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
-  const [targetBin, setTargetBin] = useState('Dry Recyclable');
+  const [targetBin, setTargetBin] = useState('Auto-Detect');
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<InspectionResponse | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -132,6 +136,43 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     ctx.fillStyle = '#ffffff';
     ctx.fillText(labelText, x + 8, Math.max(fontSize + 4, y - 8));
   }, []);
+
+  // Synchronize external inspection results (e.g. from ShieldBin AI Copilot)
+  useEffect(() => {
+    if (externalResult) {
+      setLastResult(externalResult);
+      drawOverlay(externalResult);
+    }
+  }, [externalResult, drawOverlay]);
+
+  // Frame capture function exposed to external components like AiChatBox
+  const getCurrentFrame = useCallback((): string | null => {
+    if (previewImage) {
+      return previewImage;
+    }
+    if (videoRef.current && canvasRef.current && videoRef.current.videoWidth > 0) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const captureWidth = Math.max(video.videoWidth || 640, 640);
+      const captureHeight = Math.max(video.videoHeight || 480, 480);
+      canvas.width = captureWidth;
+      canvas.height = captureHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(video, 0, 0, captureWidth, captureHeight);
+        return canvas.toDataURL('image/jpeg', 0.90);
+      }
+    }
+    return null;
+  }, [previewImage]);
+
+  useEffect(() => {
+    if (onFrameCaptureReady) {
+      onFrameCaptureReady(getCurrentFrame);
+    }
+  }, [onFrameCaptureReady, getCurrentFrame]);
 
   // 3. Strict Manual Inspection API Call (Executed ONLY when clicking "Inspect Waste Item")
   const inspectImageBase64 = useCallback(
@@ -248,131 +289,6 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     e.target.value = '';
   };
 
-  // Helper to load high-resolution simulated sample waste item frames
-  const handleSampleTest = (type: 'bottle' | 'pizza' | 'phone' | 'battery' | 'milk' | 'empty') => {
-    const c = document.createElement('canvas');
-    c.width = 1280;
-    c.height = 720;
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-
-    if (type === 'phone') {
-      // Draw simulated Mobile Phone (E-Waste / Hazardous)
-      ctx.fillStyle = '#090d16';
-      ctx.fillRect(0, 0, 1280, 720);
-      // Phone Body
-      ctx.fillStyle = '#1e293b';
-      ctx.beginPath();
-      if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(480, 120, 320, 520, 32);
-      } else {
-        ctx.rect(480, 120, 320, 520);
-      }
-      ctx.fill();
-      // Phone Screen
-      ctx.fillStyle = '#0f172a';
-      ctx.beginPath();
-      if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(496, 140, 288, 480, 20);
-      } else {
-        ctx.rect(496, 140, 288, 480);
-      }
-      ctx.fill();
-      // Camera bump
-      ctx.fillStyle = '#334155';
-      ctx.beginPath();
-      ctx.arc(540, 175, 16, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Smartphone / Mobile Device', 640, 370);
-      ctx.font = '18px sans-serif';
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText('Lithium-ion Battery & Heavy Metals Inside', 640, 410);
-      setTargetBin('Dry Recyclable');
-    } else if (type === 'bottle') {
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 1280, 720);
-      ctx.fillStyle = '#38bdf8';
-      ctx.beginPath();
-      if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(520, 160, 240, 460, 36);
-      } else {
-        ctx.rect(520, 160, 240, 460);
-      }
-      ctx.fill();
-      ctx.fillStyle = '#0284c7';
-      ctx.fillRect(590, 110, 100, 50);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 30px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Clean PET Water Bottle', 640, 380);
-      setTargetBin('Dry Recyclable');
-    } else if (type === 'pizza') {
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 1280, 720);
-      ctx.fillStyle = '#d97706';
-      ctx.fillRect(360, 180, 560, 400);
-      ctx.fillStyle = '#dc2626';
-      ctx.beginPath();
-      ctx.arc(560, 360, 70, 0, Math.PI * 2);
-      ctx.arc(720, 420, 80, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Greasy Pizza Box', 640, 390);
-      setTargetBin('Dry Recyclable');
-    } else if (type === 'battery') {
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 1280, 720);
-      ctx.fillStyle = '#475569';
-      ctx.beginPath();
-      if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(480, 220, 320, 320, 24);
-      } else {
-        ctx.rect(480, 220, 320, 320);
-      }
-      ctx.fill();
-      ctx.fillStyle = '#eab308';
-      ctx.fillRect(600, 180, 80, 40);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 30px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Lithium Battery / Cable', 640, 390);
-      setTargetBin('Dry Recyclable');
-    } else if (type === 'milk') {
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 1280, 720);
-      ctx.fillStyle = '#e2e8f0';
-      ctx.fillRect(440, 180, 400, 420);
-      ctx.fillStyle = '#3b82f6';
-      ctx.font = 'bold 30px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Unrinsed Milk Pouch', 640, 390);
-      setTargetBin('Dry Recyclable');
-    } else {
-      // Empty / No Object scenario
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 1280, 720);
-      ctx.fillStyle = '#334155';
-      ctx.font = '24px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('[Empty Viewfinder Frame - No Item]', 640, 360);
-      setTargetBin('Dry Recyclable');
-    }
-
-    const b64 = c.toDataURL('image/jpeg', 0.90);
-    setPreviewImage(b64);
-    setLastResult(null); // Clear previous result banner
-    const canvas = overlayCanvasRef.current;
-    if (canvas) {
-      const overlayCtx = canvas.getContext('2d');
-      overlayCtx?.clearRect(0, 0, canvas.width, canvas.height);
-    }
-  };
-
   return (
     <div className="flex flex-col gap-4">
       {/* Hidden File Input for Image Upload */}
@@ -444,19 +360,13 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-slate-200 p-6 text-center z-30">
             <span className="text-4xl mb-2">📷</span>
             <p className="font-semibold text-rose-300 mb-2">{cameraError}</p>
-            <p className="text-xs text-slate-400 mb-4">Click below to upload a photo or choose a sample waste item:</p>
+            <p className="text-xs text-slate-400 mb-4">Click below to upload a photo for inspection:</p>
             <div className="flex gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all cursor-pointer"
               >
                 📁 Upload Photo
-              </button>
-              <button
-                onClick={() => handleSampleTest('bottle')}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-bold border border-slate-700 cursor-pointer"
-              >
-                🧴 Test Bottle
               </button>
             </div>
           </div>
@@ -475,9 +385,9 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
               onChange={(e) => setTargetBin(e.target.value)}
               className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white rounded-lg px-2.5 sm:px-3 py-1.5 focus:outline-none focus:border-emerald-500 w-full sm:w-auto font-medium"
             >
+              <option value="Auto-Detect">Auto-Detect Stream</option>
               <option value="Dry Recyclable">Blue Bin (Dry Recyclable)</option>
               <option value="Wet Organic">Green Bin (Wet Organic)</option>
-              <option value="Auto-Detect">Auto-Detect Stream</option>
             </select>
           </div>
 
@@ -517,43 +427,6 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
                   <span>Inspect Waste Item</span>
                 </>
               )}
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Test Presets Row */}
-        <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold shrink-0">
-            Quick Test Presets (Load & Inspect):
-          </span>
-          <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 w-full sm:w-auto">
-            <button
-              onClick={() => handleSampleTest('phone')}
-              disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 transition-all text-center truncate cursor-pointer font-semibold"
-            >
-              📱 Mobile Phone (E-Waste)
-            </button>
-            <button
-              onClick={() => handleSampleTest('bottle')}
-              disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all text-center truncate cursor-pointer"
-            >
-              🧴 PET Bottle (Clean)
-            </button>
-            <button
-              onClick={() => handleSampleTest('pizza')}
-              disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 border border-rose-500/30 transition-all text-center truncate cursor-pointer"
-            >
-              🍕 Greasy Pizza Box
-            </button>
-            <button
-              onClick={() => handleSampleTest('empty')}
-              disabled={isProcessing}
-              className="px-2 sm:px-2.5 py-1 text-[11px] rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-all text-center truncate cursor-pointer"
-            >
-              ⚪ Empty (Waiting Test)
             </button>
           </div>
         </div>

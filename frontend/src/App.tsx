@@ -1,16 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CameraInspector } from './components/CameraInspector';
 import { ScoreBoard } from './components/ScoreBoard';
+import { AiChatBox } from './components/AiChatBox';
 import { InspectionResponse, UserScore } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const DEFAULT_USER = 'household_402';
 const DEFAULT_WARD = 'Ward-12 (Delhi)';
 
 export function App() {
   const [userScore, setUserScore] = useState<UserScore | null>(null);
+  const [lastResult, setLastResult] = useState<InspectionResponse | null>(null);
   const [isScoreLoading, setIsScoreLoading] = useState(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const getFrameFnRef = useRef<(() => string | null) | null>(null);
   
   // Theme state: 'dark' | 'light', defaulting to dark mode with localStorage persistence
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -64,8 +67,9 @@ export function App() {
     fetchInitialData();
   }, []);
 
-  // Update Score whenever a new scan inspection returns
+  // Update Score & Result state whenever a new scan inspection returns (from Camera or Copilot)
   const handleInspectionResult = (result: InspectionResponse) => {
+    setLastResult(result);
     if (result.user_score) {
       setUserScore(result.user_score);
     }
@@ -129,11 +133,24 @@ export function App() {
       {/* Main Content Layout */}
       <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 lg:gap-8 items-start">
-          {/* Left/Main Column: Webcam Feed & Contamination Card */}
+          {/* Left/Main Column: Webcam Feed, AI Result Banner & AI Copilot Drawer */}
           <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-5 sm:gap-6 w-full">
             <CameraInspector
               apiUrl={API_URL}
               onInspectionResult={handleInspectionResult}
+              userId={DEFAULT_USER}
+              wardId={DEFAULT_WARD}
+              externalResult={lastResult}
+              onFrameCaptureReady={(fn) => {
+                getFrameFnRef.current = fn;
+              }}
+            />
+
+            {/* ShieldBin AI Copilot / Voice Override Component */}
+            <AiChatBox
+              apiUrl={API_URL}
+              onInspectionResult={handleInspectionResult}
+              getCurrentFrame={() => (getFrameFnRef.current ? getFrameFnRef.current() : null)}
               userId={DEFAULT_USER}
               wardId={DEFAULT_WARD}
             />
@@ -183,6 +200,25 @@ export function App() {
       <footer className="border-t border-slate-200 dark:border-slate-900 bg-white/60 dark:bg-slate-950/80 py-3 sm:py-4 text-center text-[11px] sm:text-xs text-slate-500 dark:text-slate-500 px-4 transition-colors">
         Bharat Builds Tour • Environmental Hacks (Oct 8–11, 2026) • Sankalp Squad
       </footer>
+
+      {/* Floating ShieldBin AI Copilot Quick Action Floating Pill */}
+      <aside aria-label="ShieldBin Copilot Floating Trigger" className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40">
+        <button
+          onClick={() => {
+            const copilotEl = document.getElementById('ai-copilot-container');
+            if (copilotEl) {
+              copilotEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              const input = copilotEl.querySelector('input');
+              input?.focus();
+            }
+          }}
+          className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-xs sm:text-sm shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/40 active:scale-95 transition-all cursor-pointer border border-white/20 backdrop-blur-md"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
+          <span className="text-base">🤖</span>
+          <span>ShieldBin AI Copilot</span>
+        </button>
+      </aside>
     </div>
   );
 }

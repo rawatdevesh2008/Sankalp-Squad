@@ -1,6 +1,6 @@
 import re
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # ==============================================================================
 # Universal Bedrock System Prompt (Claude 3.5 Sonnet)
@@ -59,14 +59,25 @@ Your response MUST match this exact schema:
 """
 
 
-def get_inspection_prompt(target_bin: str = "Dry Recyclable", location_context: str = "India - Municipal") -> str:
-    return (
+def get_inspection_prompt(
+    target_bin: str = "Dry Recyclable",
+    location_context: str = "India - Municipal",
+    user_prompt: Optional[str] = None,
+) -> str:
+    prompt = (
         f"{SYSTEM_INSPECTOR_PROMPT}\n\n"
         f"USER CONTEXT:\n"
         f"- Target Bin being scanned: '{target_bin}'\n"
-        f"- Location Context: '{location_context}'\n\n"
-        f"Inspect the image frame and output the raw JSON:"
+        f"- Location Context: '{location_context}'\n"
     )
+    if user_prompt and user_prompt.strip():
+        prompt += (
+            f"- User Copilot Instruction / Voice Override: \"{user_prompt.strip()}\"\n"
+            f"NOTE: The user has explicitly stated this correction or clarification. "
+            f"Carefully evaluate their input, re-verify the material/device, and update the audit classification accordingly.\n"
+        )
+    prompt += "\nInspect the image frame and output the raw JSON:"
+    return prompt
 
 
 def clean_and_parse_json(raw_text: str) -> Dict[str, Any]:

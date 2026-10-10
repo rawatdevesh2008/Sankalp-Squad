@@ -23,10 +23,11 @@ class UserScore(BaseModel):
 
 class InspectRequest(BaseModel):
     image_base64: str = Field(..., description="Base64-encoded image frame from webcam")
-    target_bin: Optional[str] = Field("Dry Recyclable", description="Bin being scanned: 'Dry Recyclable', 'Wet Organic', or 'Auto-Detect'")
+    target_bin: Optional[str] = Field("Auto-Detect", description="Bin being scanned: 'Auto-Detect', 'Dry Recyclable', or 'Wet Organic'")
     user_id: Optional[str] = Field("household_402", description="Household or user identifier")
     ward_id: Optional[str] = Field("Ward-12 (Delhi)", description="Ward or municipal zone identifier")
     location_context: Optional[str] = Field("India - Municipal", description="Optional local waste context")
+    user_prompt: Optional[str] = Field(None, description="Optional Copilot voice override or user correction prompt")
 
 
 class InspectionResult(BaseModel):
@@ -56,7 +57,11 @@ class InspectionResult(BaseModel):
     remediation_steps: List[str] = Field(default_factory=list, description="Step-by-step guidance")
     confidence_score: float = Field(0.95, ge=0.0, le=1.0)
     environmental_impact_tip: Optional[str] = None
-    engine_source: str = Field("Amazon Bedrock", description="Amazon Bedrock model ID or Simulation status")
+    # AWS Cedar Policy Engine Audit Verification:
+    cedar_decision: Optional[str] = Field("PERMIT", description="AWS Cedar statutory decision: 'PERMIT' or 'FORBID'")
+    cedar_policy_matched: Optional[str] = Field(None, description="AWS Cedar matching policy ID")
+    cedar_statutory_citation: Optional[str] = Field(None, description="Official statutory law citation (e.g. MoEFCC SWM 2016 Rule 15)")
+
     scan_id: Optional[str] = Field(None, description="Unique scan audit ID logged in DynamoDB")
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
