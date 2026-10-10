@@ -76,3 +76,19 @@ class CategoryInfo(BaseModel):
     bin_name: str
     examples: List[str]
     rule: str
+
+
+class CopilotChatRequest(BaseModel):
+    prompt: str = Field(..., description="User voice override or query prompt")
+    image_base64: Optional[str] = Field(None, description="Optional image base64 from camera")
+    target_bin: Optional[str] = Field("Auto-Detect", description="Active bin filter")
+    user_id: Optional[str] = Field("household_402", description="Household/User ID")
+    ward_id: Optional[str] = Field("Ward-12 (Delhi)", description="Ward ID")
+    location_context: Optional[str] = Field("India - Municipal", description="Location context")
+
+
+class CopilotChatResponse(BaseModel):
+    intent: str = Field("general_chat", description="'waste_override' or 'general_chat'")
+    reply_text: str = Field(..., description="Conversational text or CPCB 5-point structured text")
+    inspection_result: Optional[InspectionResult] = Field(None, description="Inspection result when intent is waste_override")
+
