@@ -3,10 +3,12 @@ import json
 import base64
 import hashlib
 import logging
+import random
+import re
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
@@ -774,6 +776,389 @@ class BedrockService:
             engine_source=engine_label,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
+
+    def copilot_chat(
+        self,
+        prompt: str,
+        image_bytes: Optional[bytes] = None,
+        media_type: str = "image/jpeg",
+        target_bin: str = "Auto-Detect",
+        location_context: str = "India - Municipal",
+    ) -> Tuple[str, str, Optional[InspectionResult]]:
+        """
+        Dual-purpose ShieldBin AI Copilot:
+        1. WASTE-INSPECTION & OVERRIDE MODE:
+           If user provides item name or waste override (e.g., 'banana peel', 'lithium battery', 'That's a mobile, not paper'),
+           analyzes against CPCB rules and returns structured 5-bullet text + InspectionResult.
+        2. GENERAL CHAT MODE (LIKE CHATGPT):
+           If user asks general question, coding problem, science query, everyday question, or casual conversation,
+           completely bypasses waste-audit format and returns natural conversational text without waste-bin cards.
+        """
+        if settings.USE_MOCK_BEDROCK:
+            return self._copilot_mock_chat(prompt=prompt, target_bin=target_bin)
+
+        system_prompt = (
+            "You are the ShieldBin AI Copilot, embedded in a municipal waste and contamination inspection application "
+            "(Sankalp Squad / Bharat Builds Tour). You serve a dual-purpose role:\n\n"
+            "1. WASTE-INSPECTION & OVERRIDE MODE:\n"
+            "If the user types a short item name, a waste category correction, or a voice override command "
+            "(e.g., 'banana peel', 'lithium battery', 'That\\'s a mobile, not paper', 'pizza box', 'clean bottle', 'pen', 'plastic wrapper'), "
+            "analyze it against CPCB (Central Pollution Control Board) source segregation rules.\n"
+            "Respond in this EXACT format:\n"
+            "INTENT: waste_override\n"
+            "- Item Name: [Detected item]\n"
+            "- Category: [Sanitary / Landfill | Dry Recyclable | Wet Organic | E-Hazardous]\n"
+            "- Assigned Bin: [Black Bin | Blue Bin | Green Bin | Specialized E-Waste Drop-off Center]\n"
+            "- Risk Points: [-X Points]\n"
+            "- Explanation: [Short reason why contamination occurs or why it is safe]\n\n"
+            "2. GENERAL CHAT MODE (LIKE CHATGPT):\n"
+            "If the user asks an open-ended general question, a coding problem, a science query, an everyday question, "
+            "or a casual conversation (e.g., 'How does recycling work?', 'Write a Python script', 'Tell me a joke'), "
+            "completely bypass the waste-audit JSON format. Answer naturally, helpfully, conversationally, and accurately "
+            "just like a standard general-purpose LLM. Do not force every output into a waste-bin classification card unless a specific item is being discussed.\n"
+            "Respond in this format:\n"
+            "INTENT: general_chat\n"
+            "[Your natural conversational reply]\n"
+        )
+
+        # 1. Try Google AI Studio (Gemini) first if configured
+        api_key = (getattr(settings, "GEMINI_API_KEY", "") or "").strip()
+        if api_key:
+            parts: List[Dict[str, Any]] = []
+            if image_bytes and len(image_bytes) > 200:
+                parts.append(
+                    {
+                        "inline_data": {
+                            "mime_type": media_type,
+                            "data": base64.b64encode(image_bytes).decode("utf-8"),
+                        }
+                    }
+                )
+            parts.append(
+                {
+                    "text": f"{system_prompt}\n\nUser Prompt: {prompt}\nTarget Bin: {target_bin}\nLocation: {location_context}"
+                }
+            )
+            g_body = json.dumps(
+                {
+                    "contents": [{"parts": parts}],
+                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024},
+                }
+            ).encode("utf-8")
+
+            for g_model in self._get_gemini_candidate_models():
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={api_key}"
+                req = urllib.request.Request(
+                    url,
+                    data=g_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=12) as resp:
+                        resp_data = json.loads(resp.read().decode("utf-8"))
+                        candidates = resp_data.get("candidates", [])
+                        if not candidates:
+                            continue
+                        raw_text = "".join(
+                            p.get("text", "")
+                            for p in candidates[0].get("content", {}).get("parts", [])
+                        ).strip()
+                        if not raw_text:
+                            continue
+
+                        if "INTENT: waste_override" in raw_text or "- Item Name:" in raw_text:
+                            clean_text = raw_text.replace("INTENT: waste_override", "").strip()
+                            inspection_result = self._parse_structured_cpcb_override(
+                                clean_text, target_bin=target_bin
+                            )
+                            return "waste_override", clean_text, inspection_result
+                        else:
+                            clean_text = raw_text.replace("INTENT: general_chat", "").strip()
+                            return "general_chat", clean_text, None
+                except Exception as g_err:
+                    logger.warning(f"Gemini copilot model '{g_model}' failed: {g_err}")
+                    continue
+
+        if self._client is None:
+            return self._copilot_mock_chat(prompt=prompt, target_bin=target_bin)
+
+        try:
+
+            messages_content = []
+            if image_bytes and len(image_bytes) > 200:
+                b64_img = base64.b64encode(image_bytes).decode("utf-8")
+                messages_content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": b64_img,
+                    }
+                })
+            messages_content.append({
+                "type": "text",
+                "text": f"User Prompt: {prompt}\nTarget Bin: {target_bin}\nLocation: {location_context}"
+            })
+
+            payload = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 1024,
+                "temperature": 0.2,
+                "system": system_prompt,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": messages_content,
+                    }
+                ],
+            }
+
+            response = self._client.invoke_model(
+                modelId=self.model_id,
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps(payload),
+            )
+            response_body = json.loads(response["body"].read().decode("utf-8"))
+            raw_text = response_body["content"][0]["text"].strip()
+
+            if "INTENT: waste_override" in raw_text or "- Item Name:" in raw_text:
+                clean_text = raw_text.replace("INTENT: waste_override", "").strip()
+                inspection_result = self._parse_structured_cpcb_override(clean_text, target_bin=target_bin)
+                return "waste_override", clean_text, inspection_result
+            else:
+                clean_text = raw_text.replace("INTENT: general_chat", "").strip()
+                return "general_chat", clean_text, None
+
+        except Exception as e:
+            logger.warning(f"Bedrock copilot invocation failed ({e}), falling back to local copilot engine.")
+            return self._copilot_mock_chat(prompt=prompt, target_bin=target_bin)
+
+    def _parse_structured_cpcb_override(self, structured_text: str, target_bin: str = "Auto-Detect") -> InspectionResult:
+        """Parses CPCB structured 5-point text and converts it into a full InspectionResult for UI & DB update."""
+        item_match = re.search(r"-\s*Item Name:\s*(.+)", structured_text, re.IGNORECASE)
+        cat_match = re.search(r"-\s*Category:\s*(.+)", structured_text, re.IGNORECASE)
+        bin_match = re.search(r"-\s*Assigned Bin:\s*(.+)", structured_text, re.IGNORECASE)
+        risk_match = re.search(r"-\s*Risk Points:\s*(.+)", structured_text, re.IGNORECASE)
+        exp_match = re.search(r"-\s*Explanation:\s*(.+)", structured_text, re.IGNORECASE)
+
+        item_name = item_match.group(1).strip() if item_match else "Detected Item"
+        category = cat_match.group(1).strip() if cat_match else "Dry Recyclable"
+        assigned_bin = bin_match.group(1).strip() if bin_match else "Blue Bin"
+        risk_text = risk_match.group(1).strip() if risk_match else "-0 Points"
+        explanation = exp_match.group(1).strip() if exp_match else "CPCB Source Segregation Analysis"
+
+        # Determine points from risk_text
+        points_val = 0
+        num_match = re.search(r"(-?\d+)", risk_text)
+        if num_match:
+            points_val = int(num_match.group(1))
+
+        # Check contamination & color codes
+        cat_lower = category.lower()
+        is_hazard = "hazardous" in cat_lower or "e-waste" in cat_lower or "hazard" in cat_lower
+        is_landfill = "sanitary" in cat_lower or "landfill" in cat_lower
+
+        if is_hazard or is_landfill:
+            is_contaminated = True
+            is_segregation_correct = False
+            box_color = "red"
+        elif target_bin != "Auto-Detect" and target_bin.lower() not in assigned_bin.lower() and target_bin.lower() not in category.lower():
+            is_contaminated = True
+            is_segregation_correct = False
+            box_color = "red"
+        else:
+            is_contaminated = False
+            is_segregation_correct = True
+            box_color = "green"
+
+        bin_color = "Yellow" if is_hazard else ("Black" if is_landfill else ("Green" if "green" in assigned_bin.lower() or "wet" in cat_lower else "Blue"))
+
+        action_required = (
+            "Specialized collection required: Hand over to authorized E-Waste recycling center."
+            if is_hazard
+            else ("Dispose in Black Bin for scientific landfill." if is_landfill
+                  else ("Compost cleanly in Green Bin." if bin_color == "Green" else "Safe to recycle in Blue Bin."))
+        )
+
+        return InspectionResult(
+            success=True,
+            item_detected=item_name,
+            category=category,
+            is_contaminated=is_contaminated,
+            is_segregation_correct=is_segregation_correct,
+            box_color=box_color,
+            bounding_box=BoundingBox(ymin=200, xmin=240, ymax=760, xmax=760),
+            contamination_reason=explanation if is_contaminated else None,
+            correct_bin=assigned_bin,
+            bin_color=bin_color,
+            action_required=action_required,
+            points_awarded=points_val if points_val != 0 else (15 if is_segregation_correct else -10),
+            material=category,
+            remediation_steps=[action_required],
+            confidence_score=0.98,
+            environmental_impact_tip="Source-level compliance with CPCB MSW 2016 stops contamination at collection points.",
+            engine_source="ShieldBin AI Copilot (CPCB SWM 2016)",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def _copilot_mock_chat(self, prompt: str, target_bin: str = "Auto-Detect") -> Tuple[str, str, Optional[InspectionResult]]:
+        """High-fidelity local intelligence engine for Copilot when AWS Bedrock runs in simulation mode."""
+        prompt_strip = prompt.strip()
+        prompt_lower = prompt_strip.lower()
+
+        # 1. Intent Detection
+        override_triggers = [
+            "that's a", "thats a", "this is a", "it is a", "override",
+            "change to", "not paper", "not plastic", "not wet", "not food",
+            "classify as", "re-audit", "wrong bin"
+        ]
+        is_explicit_override = any(t in prompt_lower for t in override_triggers)
+
+        # Waste item keywords
+        waste_keywords = [
+            "banana", "peel", "apple", "fruit", "vegetable", "food", "scrap", "leftover", "rice",
+            "tea bag", "tea leaves", "egg", "compost", "organic",
+            "battery", "lithium", "phone", "smartphone", "mobile", "charger", "laptop", "cable",
+            "wire", "e-waste", "electronic", "circuit", "earphone", "headphones",
+            "pizza", "pizza box", "grease", "greasy", "soiled", "sanitary", "pad", "diaper",
+            "tissue", "mask", "styrofoam", "thermocol", "cigarette",
+            "bottle", "plastic bottle", "pet bottle", "milk pouch", "milk packet", "can", "aluminum",
+            "cardboard", "newspaper", "tin", "shampoo"
+        ]
+
+        words = prompt_lower.split()
+
+        # Determine if prompt is a general chat query:
+        general_triggers = [
+            "how does", "how do", "how can", "how to", "what is", "what are",
+            "why does", "why is", "why do", "tell me", "explain", "can you",
+            "write a", "write python", "code", "script", "algorithm", "binary search",
+            "joke", "funny", "who is", "who are", "describe", "difference between",
+            "hello", "hi", "hey", "good morning", "good evening", "how are you",
+            "photosynthesis", "quantum", "capital of", "weather"
+        ]
+
+        is_general_query = any(prompt_lower.startswith(q) for q in general_triggers) or any(
+            f" {q} " in f" {prompt_lower} " for q in ["joke", "python", "binary search", "photosynthesis", "algorithm", "script", "code"]
+        )
+
+        if not is_explicit_override and is_general_query:
+            intent = "general_chat"
+        elif is_explicit_override or (len(words) <= 7 and any(k in prompt_lower for k in waste_keywords)):
+            intent = "waste_override"
+        elif any(k in prompt_lower for k in waste_keywords) and not ("?" in prompt_strip and len(words) > 8):
+            intent = "waste_override"
+        else:
+            intent = "general_chat"
+
+        # 2. Handle GENERAL CHAT MODE
+        if intent == "general_chat":
+            if any(w in prompt_lower for w in ["joke", "funny"]):
+                reply = (
+                    "Why did the plastic bottle go to therapy? 😄\n\n"
+                    "Because it couldn't handle the pressure of keeping all its emotions bottled up—"
+                    "and it really wanted to turn over a new leaf and get recycled!"
+                )
+            elif any(w in prompt_lower for w in ["python", "binary search", "code", "script"]):
+                reply = (
+                    "Here is a clean, efficient Python implementation of binary search:\n\n"
+                    "```python\n"
+                    "def binary_search(arr: list[int], target: int) -> int:\n"
+                    "    \"\"\"\n"
+                    "    Searches for target in a sorted list. Returns index or -1 if not found.\n"
+                    "    Time Complexity: O(log n) | Space Complexity: O(1)\n"
+                    "    \"\"\"\n"
+                    "    left, right = 0, len(arr) - 1\n"
+                    "    while left <= right:\n"
+                    "        mid = (left + right) // 2\n"
+                    "        if arr[mid] == target:\n"
+                    "            return mid\n"
+                    "        elif arr[mid] < target:\n"
+                    "            left = mid + 1\n"
+                    "        else:\n"
+                    "            right = mid - 1\n"
+                    "    return -1\n\n"
+                    "# Example usage:\n"
+                    "numbers = [3, 7, 12, 19, 25, 38, 44, 59, 77]\n"
+                    "index = binary_search(numbers, 25)\n"
+                    "print(f'Found at index: {index}')  # Output: Found at index: 4\n"
+                    "```\n\n"
+                    "Let me know if you'd like a recursive version or test cases!"
+                )
+            elif "recycling work" in prompt_lower or ("how" in prompt_lower and "recycl" in prompt_lower):
+                reply = (
+                    "Recycling is a circular material recovery process governed by 5 main phases:\n\n"
+                    "1. **Source Segregation**: Waste is segregated at generation points (e.g., Blue Bin for dry recyclables, Green Bin for wet compostables).\n"
+                    "2. **Materials Recovery Facility (MRF)**: Waste passes through optical sorters, ballistic separators, and magnetic drums to isolate PET, HDPE, aluminium, and fibers.\n"
+                    "3. **Washing & Decontamination**: Residues like grease, adhesives, and sour liquids are washed away.\n"
+                    "4. **Flaking & Pelleting**: Clean plastics are shredded into uniform flakes and extruded into resin pellets; cardboard is repulped in water baths.\n"
+                    "5. **Remanufacturing**: Pellets and pulps are blended with virgin materials to create new packaging, reducing carbon emissions by up to 70%."
+                )
+            elif "photosynthesis" in prompt_lower:
+                reply = (
+                    "Photosynthesis is the biochemical process by which plants, algae, and cyanobacteria convert sunlight, "
+                    "water (H₂O), and carbon dioxide (CO₂) into glucose (chemical energy) and oxygen (O₂).\n\n"
+                    "**Overall Equation:**\n"
+                    "`6CO₂ + 6H₂O + light energy ➔ C₆H₁₂O₆ + 6O₂`\n\n"
+                    "It takes place inside the chloroplasts via light-dependent reactions in thylakoids and the Calvin cycle in the stroma."
+                )
+            elif any(w in prompt_lower for w in ["hi", "hello", "hey", "who are you"]):
+                reply = (
+                    "Hello! 👋 I'm your **ShieldBin AI Copilot**.\n\n"
+                    "I operate with dual-purpose intelligence:\n"
+                    "- **Waste Inspection & Voice Override**: Say or type items like *'banana peel'*, *'lithium battery'*, or *'That\\'s a mobile, not paper'* to audit against CPCB rules.\n"
+                    "- **General Assistant**: Ask me anything—science questions, code snippets, math, jokes, or everyday conversation—just like ChatGPT!\n\n"
+                    "How can I help you today?"
+                )
+            else:
+                reply = (
+                    f"That's an interesting question! Based on general principles regarding \"{prompt_strip}\":\n\n"
+                    "Whether you're exploring technical concepts, everyday problems, or circular sustainability, "
+                    "I'm here to provide direct, accurate answers. Feel free to ask follow-up questions, request code snippets, "
+                    "or explore any topic in detail!"
+                )
+            return "general_chat", reply, None
+
+        # 3. Handle WASTE-INSPECTION & OVERRIDE MODE (CPCB Rules)
+        # Classify into one of the 4 CPCB Categories
+        if any(w in prompt_lower for w in ["battery", "lithium", "phone", "smartphone", "mobile", "charger", "e-waste", "electronic", "cable", "laptop", "earphone"]):
+            item_name = "Lithium Battery Pack" if "battery" in prompt_lower or "lithium" in prompt_lower else "Smartphone / E-Waste Device"
+            category = "E-Hazardous"
+            assigned_bin = "Specialized E-Waste Drop-off Center"
+            risk_points = "-25 Points"
+            explanation = "Contains volatile lithium-ion cells and heavy metals (lead, mercury, cadmium) that cause spontaneous compactor fires and toxic leachate."
+        elif any(w in prompt_lower for w in ["banana", "peel", "vegetable", "fruit", "apple", "food", "scrap", "leftover", "rice", "tea", "egg", "compost", "organic"]):
+            item_name = "Banana Peel" if "banana" in prompt_lower else ("Vegetable & Fruit Peels" if "peel" in prompt_lower else "Wet Organic Food Scraps")
+            category = "Wet Organic"
+            assigned_bin = "Green Bin"
+            risk_points = "-0 Points"
+            explanation = "Biodegradable organic matter. Mixing into dry recyclables causes fungal mold, moisture damage, and degrades clean recyclable paper/plastic."
+        elif any(w in prompt_lower for w in ["pizza", "grease", "greasy", "soiled", "sanitary", "pad", "diaper", "tissue", "mask", "styrofoam", "thermocol", "cigarette"]):
+            item_name = "Greasy Cardboard Pizza Box" if "pizza" in prompt_lower else ("Sanitary Waste / Pad" if "pad" in prompt_lower or "sanitary" in prompt_lower else "Food-Soiled Sanitary Reject")
+            category = "Sanitary / Landfill"
+            assigned_bin = "Black Bin"
+            risk_points = "-10 Points"
+            explanation = "Heavy food grease and biological fluids embed into cellulose fibers, preventing chemical pulping and contaminating clean recycling batches."
+        else:
+            item_name = "Clean PET Plastic Bottle" if "bottle" in prompt_lower else ("Clean Dry Cardboard" if "cardboard" in prompt_lower else "Clean Dry Recyclable Item")
+            category = "Dry Recyclable"
+            assigned_bin = "Blue Bin"
+            risk_points = "-0 Points"
+            explanation = "Clean, unsoiled inorganic material suitable for municipal sorting, mechanical granulation, and circular reprocessing."
+
+        structured_text = (
+            f"- Item Name: {item_name}\n"
+            f"- Category: {category}\n"
+            f"- Assigned Bin: {assigned_bin}\n"
+            f"- Risk Points: {risk_points}\n"
+            f"- Explanation: {explanation}"
+        )
+
+        inspection_result = self._parse_structured_cpcb_override(structured_text, target_bin=target_bin)
+        return "waste_override", structured_text, inspection_result
+
 
 
 bedrock_service = BedrockService()

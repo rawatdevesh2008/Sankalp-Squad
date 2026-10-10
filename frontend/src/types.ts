@@ -53,3 +53,18 @@ export interface InspectionResponse {
 
 export type InspectionResult = InspectionResponse;
 
+export interface CopilotChatRequest {
+  prompt: string;
+  image_base64?: string | null;
+  target_bin?: string;
+  user_id?: string;
+  ward_id?: string;
+  location_context?: string;
+}
+
+export interface CopilotChatResponse {
+  intent: 'waste_override' | 'general_chat';
+  reply_text: string;
+  inspection_result?: InspectionResponse | null;
+}
+

@@ -15,6 +15,8 @@ from app.models import (
     BoundingBox,
     CategoryInfo,
     UserScore,
+    CopilotChatRequest,
+    CopilotChatResponse,
 )
 from app.bedrock_service import bedrock_service
 from app.dynamodb_service import dynamodb_service
@@ -326,6 +328,97 @@ async def inspect_waste(payload: InspectRequest):
     except Exception as e:
         logger.error(f"Error inspecting base64 image: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to inspect image: {str(e)}")
+
+
+@app.post("/api/copilot/chat", response_model=CopilotChatResponse)
+async def copilot_chat_endpoint(payload: CopilotChatRequest):
+    """
+    ShieldBin AI Copilot dual-purpose endpoint:
+    1. WASTE-INSPECTION & OVERRIDE MODE:
+       Analyzes short item name, waste correction, or voice override against CPCB rules.
+       Returns structured 5-bullet format, runs AWS Cedar policy, logs DynamoDB score,
+       and returns InspectionResult to update active card & camera overlay.
+    2. GENERAL CHAT MODE (LIKE CHATGPT):
+       Answers open-ended, coding, science, everyday, or casual questions naturally without
+       forcing waste-bin cards or altering inspection state.
+    """
+    try:
+        user_prompt = payload.prompt.strip()
+        target_bin = payload.target_bin or "Auto-Detect"
+        user_id = payload.user_id or "household_402"
+        ward_id = payload.ward_id or "Ward-12 (Delhi)"
+        location_context = payload.location_context or "India - Municipal"
+
+        # Optional camera frame bytes
+        image_bytes = None
+        media_type = "image/jpeg"
+        if payload.image_base64 and len(payload.image_base64) > 200:
+            raw_input = payload.image_base64.strip()
+            if "," in raw_input:
+                header, b64_part = raw_input.split(",", 1)
+                if "png" in header.lower():
+                    media_type = "image/png"
+                elif "webp" in header.lower():
+                    media_type = "image/webp"
+                raw_base64 = b64_part.strip()
+            else:
+                raw_base64 = raw_input
+            raw_base64 = raw_base64.replace("\n", "").replace("\r", "").strip()
+            pad = len(raw_base64) % 4
+            if pad:
+                raw_base64 += "=" * (4 - pad)
+            try:
+                image_bytes = base64.b64decode(raw_base64)
+            except Exception:
+                image_bytes = None
+
+        intent, reply_text, inspection_result = bedrock_service.copilot_chat(
+            prompt=user_prompt,
+            image_bytes=image_bytes,
+            media_type=media_type,
+            target_bin=target_bin,
+            location_context=location_context,
+        )
+
+        # If waste override mode, run Cedar policy verification & log DynamoDB score
+        if intent == "waste_override" and inspection_result is not None:
+            cedar_eval = cedar_engine.evaluate(
+                target_bin=target_bin,
+                category=inspection_result.category,
+                item_detected=inspection_result.item_detected or "None",
+                is_contaminated=inspection_result.is_contaminated,
+                contamination_reason=inspection_result.contamination_reason,
+                user_id=user_id,
+            )
+            inspection_result.cedar_decision = cedar_eval.decision
+            inspection_result.cedar_policy_matched = cedar_eval.policy_matched
+            inspection_result.cedar_statutory_citation = cedar_eval.statutory_citation
+
+            if cedar_eval.decision == "FORBID":
+                inspection_result.is_contaminated = True
+                inspection_result.is_segregation_correct = False
+                inspection_result.box_color = "red"
+                if not inspection_result.contamination_reason:
+                    inspection_result.contamination_reason = cedar_eval.legal_mandate
+
+            # Log to DynamoDB & get updated user score
+            scan_id, updated_score = dynamodb_service.log_scan_and_update_score(
+                scan_result=inspection_result.model_dump(),
+                user_id=user_id,
+                ward_id=ward_id,
+            )
+            inspection_result.scan_id = scan_id
+            inspection_result.user_score = updated_score
+
+        return CopilotChatResponse(
+            intent=intent,
+            reply_text=reply_text,
+            inspection_result=inspection_result,
+        )
+
+    except Exception as e:
+        logger.error(f"Error in copilot chat: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Copilot error: {str(e)}")
 
 
 @app.get("/api/user/score", response_model=UserScore)

@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { InspectionResponse } from '../types';
+import { InspectionResponse, CopilotChatResponse } from '../types';
+
+export interface StructuredOverride {
+  itemName: string;
+  category: string;
+  assignedBin: string;
+  riskPoints: string;
+  explanation: string;
+}
 
 export interface ChatMessage {
   id: string;
   sender: 'ai' | 'user';
   text: string;
   timestamp: string;
+  intent?: 'waste_override' | 'general_chat';
+  structured?: StructuredOverride | null;
   result?: InspectionResponse;
   isLoading?: boolean;
 }
@@ -19,6 +29,34 @@ interface AiChatBoxProps {
   wardId?: string;
   className?: string;
 }
+
+/**
+ * Parses CPCB 5-point structured override text:
+ * - Item Name: [Detected item]
+ * - Category: [Sanitary / Landfill | Dry Recyclable | Wet Organic | E-Hazardous]
+ * - Assigned Bin: [Black Bin | Blue Bin | Green Bin | Specialized E-Waste Drop-off Center]
+ * - Risk Points: [-X Points]
+ * - Explanation: [Short reason why contamination occurs]
+ */
+export const parseWasteOverride = (text: string): StructuredOverride | null => {
+  if (!text) return null;
+  const itemMatch = text.match(/-\s*Item Name:\s*(.+)/i);
+  const catMatch = text.match(/-\s*Category:\s*(.+)/i);
+  const binMatch = text.match(/-\s*Assigned Bin:\s*(.+)/i);
+  const riskMatch = text.match(/-\s*Risk Points:\s*(.+)/i);
+  const expMatch = text.match(/-\s*Explanation:\s*(.+)/i);
+
+  if (itemMatch && (catMatch || binMatch)) {
+    return {
+      itemName: itemMatch[1].trim(),
+      category: catMatch ? catMatch[1].trim() : 'Dry Recyclable',
+      assignedBin: binMatch ? binMatch[1].trim() : 'Blue Bin',
+      riskPoints: riskMatch ? riskMatch[1].trim() : '-0 Points',
+      explanation: expMatch ? expMatch[1].trim() : 'CPCB Source Segregation Analysis',
+    };
+  }
+  return null;
+};
 
 export const AiChatBox: React.FC<AiChatBoxProps> = ({
   apiUrl,
@@ -52,7 +90,8 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
     {
       id: 'welcome',
       sender: 'ai',
-      text: "👋 Hi! I'm your ShieldBin AI Vision Copilot. Holding an item that wasn't classified properly? Type or speak a voice override (e.g. 'That's a lithium battery, not plastic...') and I'll re-audit the live frame instantly!",
+      intent: 'general_chat',
+      text: "👋 Hi! I'm your ShieldBin AI Copilot. I serve a dual role:\n\n1. **Waste Inspection & Override**: Type or speak an item (e.g. 'banana peel', 'lithium battery', 'That\\'s a mobile, not paper') to re-audit against CPCB rules.\n2. **General Assistant**: Ask me anything—science queries, Python code, recycling mechanics, or jokes—just like ChatGPT!",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -158,20 +197,20 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 32px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('ShieldBin Copilot Snapshot', 640, 320);
+    ctx.fillText('ShieldBin Copilot Buffer', 640, 320);
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = '22px sans-serif';
-    ctx.fillText(`Override Prompt: "${prompt.slice(0, 45)}"`, 640, 380);
+    ctx.fillText(`Prompt: "${prompt.slice(0, 45)}"`, 640, 380);
 
     ctx.fillStyle = '#22c55e';
     ctx.font = '16px monospace';
-    ctx.fillText('Live Frame Re-audit Buffer', 640, 430);
+    ctx.fillText('CPCB Audit Live Stream', 640, 430);
 
     return canvas.toDataURL('image/jpeg', 0.9);
   };
 
-  // Execute AI Copilot Inspection
+  // Execute AI Copilot Request (Dual Purpose: Waste Override vs. General Chat)
   const handleSend = async (overridePrompt?: string) => {
     const promptToSend = (overridePrompt ?? inputText).trim();
     if (!promptToSend || isAnalyzing) return;
@@ -196,23 +235,12 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // 2. Append temporary AI acknowledgment bubble
+    // 2. Append temporary AI thinking bubble
     const aiTempId = `ai-temp-${Date.now()}`;
-    const promptLower = promptToSend.toLowerCase();
-    const itemHint = promptLower.includes('battery')
-      ? 'a lithium battery'
-      : promptLower.includes('phone')
-      ? 'a mobile device'
-      : promptLower.includes('pizza')
-      ? 'greasy food packaging'
-      : promptLower.includes('milk')
-      ? 'a milk pouch'
-      : 'your custom correction';
-
     const aiTempMsg: ChatMessage = {
       id: aiTempId,
       sender: 'ai',
-      text: `Got it! Re-analyzing as ${itemHint}...`,
+      text: 'Analyzing prompt...',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isLoading: true,
     };
@@ -221,27 +249,25 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
     setIsAnalyzing(true);
 
     try {
-      // 3. Grab current camera frame
+      // 3. Grab current camera frame if available
       let imageBase64: string | null = null;
       if (getCurrentFrame) {
         imageBase64 = getCurrentFrame();
       }
-
       if (!imageBase64 || imageBase64.length < 200) {
-        // Fallback to high-res synthesized canvas buffer
         imageBase64 = createFallbackFrame(promptToSend);
       }
 
-      // 4. POST to backend /api/inspect
-      const endpoint = `${backendUrl.replace(/\/+$/, '')}/api/inspect`;
+      // 4. POST to dedicated dual-purpose endpoint /api/copilot/chat
+      const endpoint = `${backendUrl.replace(/\/+$/, '')}/api/copilot/chat`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          prompt: promptToSend,
           image_base64: imageBase64,
-          user_prompt: promptToSend,
           target_bin: targetBin,
           user_id: userId,
           ward_id: wardId,
@@ -250,39 +276,40 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error(`API responded with status: ${response.status}`);
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
 
-      const data: InspectionResponse = await response.json();
+      const data: CopilotChatResponse = await response.json();
+      const structuredData = parseWasteOverride(data.reply_text);
 
-      // 5. Update global UI immediately: red/green result banner, scoreboard, canvas
-      onInspectionResult(data);
+      // 5. If waste_override, update the active card, camera overlay, and DynamoDB scoreboard!
+      if (data.intent === 'waste_override' && data.inspection_result) {
+        onInspectionResult(data.inspection_result);
+      }
 
-      // 6. Confirm adjustment in AI chat bubble
-      const isContaminated = data.is_contaminated || !data.is_segregation_correct;
-      const statusIcon = isContaminated ? '⚠️' : '✅';
-      const aiReplyText = `Got it! Re-analyzed as: **${data.item_detected}** (${data.category}). ${statusIcon} Assigned to **${data.correct_bin}**.`;
-
+      // 6. Update message list with response
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === aiTempId
             ? {
                 ...msg,
-                text: aiReplyText,
+                text: data.reply_text,
+                intent: data.intent,
+                structured: structuredData,
+                result: data.inspection_result || undefined,
                 isLoading: false,
-                result: data,
               }
             : msg
         )
       );
     } catch (err: any) {
-      console.error('Copilot inspection error:', err);
+      console.error('Copilot request error:', err);
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === aiTempId
             ? {
                 ...msg,
-                text: `❌ Could not complete re-inspection: ${err.message || 'Network error'}. Please check backend connection.`,
+                text: `❌ Error processing request: ${err.message || 'Network error'}. Please verify backend connection.`,
                 isLoading: false,
               }
             : msg
@@ -301,13 +328,71 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
     }
   };
 
-  // Quick preset override prompts
+  // Quick preset override prompts showcasing both Waste Override & General Chat
   const samplePrompts = [
-    { label: '🔋 Lithium Battery', prompt: "That's a lithium battery, not plastic..." },
-    { label: '📱 Mobile Phone', prompt: "That is a smartphone / e-waste device, not dry recyclable." },
-    { label: '🍕 Greasy Pizza Box', prompt: "This cardboard pizza box has severe grease stains at the bottom." },
-    { label: '🧴 Clean PET Bottle', prompt: "Clean and rinsed PET water bottle with cap intact." },
+    { label: '🔋 Lithium Battery', prompt: 'lithium battery' },
+    { label: '🍌 Banana Peel', prompt: 'banana peel' },
+    { label: '📱 Mobile Phone', prompt: "That's a mobile, not paper" },
+    { label: '🍕 Pizza Box', prompt: 'greasy pizza box' },
+    { label: '♻️ How Recycling Works', prompt: 'How does recycling work?' },
+    { label: '🐍 Python Script', prompt: 'Write a Python script for binary search' },
+    { label: '😄 Tell Me a Joke', prompt: 'Tell me a joke' },
   ];
+
+  // Helper to render conversational text with code blocks and clean markdown
+  const renderFormattedText = (text: string) => {
+    if (!text) return null;
+
+    // Check for code blocks
+    if (text.includes('```')) {
+      const parts = text.split(/(```[\s\S]*?```)/g);
+      return (
+        <div className="space-y-2">
+          {parts.map((part, idx) => {
+            if (part.startsWith('```') && part.endsWith('```')) {
+              const lines = part.slice(3, -3).trim().split('\n');
+              const language = lines[0].trim();
+              const code = (language.match(/^[a-z0-9_-]+$/i) ? lines.slice(1) : lines).join('\n');
+              return (
+                <div key={idx} className="my-2 rounded-xl overflow-hidden border border-slate-700 bg-slate-950">
+                  {language && (
+                    <div className="px-3 py-1 bg-slate-900 border-b border-slate-800 text-[10px] text-slate-400 font-mono">
+                      {language}
+                    </div>
+                  )}
+                  <pre className="p-3 text-[11px] font-mono text-emerald-400 overflow-x-auto leading-relaxed scrollbar-thin">
+                    <code>{code}</code>
+                  </pre>
+                </div>
+              );
+            }
+
+            // Normal text block
+            return (
+              <div key={idx} className="whitespace-pre-wrap leading-relaxed">
+                {part.split('\n\n').map((para, pIdx) => (
+                  <p key={pIdx} className="mb-1.5 last:mb-0">
+                    {para}
+                  </p>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // Standard markdown paragraphs
+    return (
+      <div className="whitespace-pre-wrap leading-relaxed">
+        {text.split('\n\n').map((para, idx) => (
+          <p key={idx} className="mb-1.5 last:mb-0">
+            {para}
+          </p>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div id="ai-copilot-container" className={`transition-all duration-300 w-full max-w-2xl mx-auto scroll-mt-20 ${className}`}>
@@ -329,14 +414,14 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
-                  ShieldBin AI Assistant / Voice Override
+                  ShieldBin AI Copilot
                 </h3>
-                <span className="hidden xs:inline text-[9px] uppercase font-mono px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
-                  Copilot
+                <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                  CPCB & ChatGPT Dual Engine
                 </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                {isOpen ? 'Tap to collapse • Live speech & prompt corrections' : 'Tap to expand AI voice & prompt override drawer'}
+                {isOpen ? 'Waste overrides update active card • General questions answered naturally' : 'Tap to expand AI Copilot drawer'}
               </p>
             </div>
           </div>
@@ -382,16 +467,18 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
             </div>
 
             {/* Chat History Messages Container */}
-            <div className="max-h-56 sm:max-h-64 overflow-y-auto space-y-2.5 pr-1 scrollbar-thin">
+            <div className="max-h-72 sm:max-h-80 overflow-y-auto space-y-3 pr-1 scrollbar-thin">
               {messages.map((msg) => {
                 const isUser = msg.sender === 'user';
+                const isWasteOverride = msg.intent === 'waste_override' || !!msg.structured;
+
                 return (
                   <div
                     key={msg.id}
                     className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
                   >
                     <div
-                      className={`max-w-[88%] sm:max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs shadow-sm transition-all ${
+                      className={`max-w-[92%] sm:max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs shadow-sm transition-all ${
                         isUser
                           ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-br-none'
                           : 'bg-slate-100 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/60 rounded-bl-none'
@@ -400,7 +487,9 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
                       {/* Message Body */}
                       <div className="flex items-start gap-2">
                         {!isUser && (
-                          <span className="text-sm mt-0.5 shrink-0">🤖</span>
+                          <span className="text-sm mt-0.5 shrink-0">
+                            {isWasteOverride ? '🛡️' : '🤖'}
+                          </span>
                         )}
                         <div className="flex-1 leading-relaxed break-words">
                           {msg.isLoading ? (
@@ -408,39 +497,75 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
                               <span className="w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
                               <span>{msg.text}</span>
                             </div>
-                          ) : (
-                            <div>
-                              <span>{msg.text}</span>
-                              {/* Extra details badge if response contains audit result */}
-                              {msg.result && (
-                                <div className="mt-2 pt-2 border-t border-slate-200/50 dark:border-slate-700/50 flex flex-wrap gap-1.5 text-[10px]">
-                                  <span
-                                    className={`px-1.5 py-0.5 rounded font-bold ${
-                                      msg.result.is_contaminated
-                                        ? 'bg-rose-500/20 text-rose-600 dark:text-rose-300'
-                                        : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300'
-                                    }`}
-                                  >
-                                    {msg.result.is_contaminated ? 'CONTAMINATED' : 'CLEAN'}
-                                  </span>
-                                  <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-600 dark:text-blue-300 font-mono">
-                                    {msg.result.correct_bin}
-                                  </span>
-                                  {msg.result.contamination_reason && (
-                                    <p className="w-full text-[10px] text-slate-500 dark:text-slate-400 italic mt-0.5">
-                                      {msg.result.contamination_reason}
-                                    </p>
-                                  )}
+                          ) : isWasteOverride && msg.structured ? (
+                            /* Structured CPCB Waste Inspection Override Card */
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60 dark:border-slate-700/60">
+                                <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                  <span>⚖️</span> CPCB Source Segregation Audit
+                                </span>
+                                <span
+                                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                                    msg.structured.riskPoints.includes('-') && !msg.structured.riskPoints.includes('-0')
+                                      ? 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30'
+                                      : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
+                                  }`}
+                                >
+                                  Risk: {msg.structured.riskPoints}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-0.5">
+                                <div className="bg-white/80 dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
+                                  <span className="text-[10px] font-semibold text-slate-400 uppercase block">Item Name</span>
+                                  <span className="font-bold text-slate-900 dark:text-white">{msg.structured.itemName}</span>
                                 </div>
-                              )}
+
+                                <div className="bg-white/80 dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
+                                  <span className="text-[10px] font-semibold text-slate-400 uppercase block">Category</span>
+                                  <span className="font-bold text-slate-900 dark:text-white">{msg.structured.category}</span>
+                                </div>
+                              </div>
+
+                              <div className="bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
+                                <div>
+                                  <span className="text-[10px] font-semibold text-slate-400 uppercase block">Assigned Bin</span>
+                                  <span className="font-bold text-cyan-600 dark:text-cyan-300 text-xs sm:text-sm">
+                                    {msg.structured.assignedBin}
+                                  </span>
+                                </div>
+                                <span className="text-xl">
+                                  {msg.structured.assignedBin.includes('Green')
+                                    ? '🟢'
+                                    : msg.structured.assignedBin.includes('Blue')
+                                    ? '🔵'
+                                    : msg.structured.assignedBin.includes('Black')
+                                    ? '⚫'
+                                    : '🟡'}
+                                </span>
+                              </div>
+
+                              <div className="pt-1 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed bg-white/60 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
+                                <span className="font-semibold text-slate-700 dark:text-slate-200 block text-[10px] uppercase mb-0.5">
+                                  Explanation:
+                                </span>
+                                {msg.structured.explanation}
+                              </div>
+
+                              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5 pt-0.5">
+                                <span>✅</span> Active card & live camera overlay updated!
+                              </div>
                             </div>
+                          ) : (
+                            /* Natural Conversational Response (General Chat Mode) */
+                            <div>{renderFormattedText(msg.text)}</div>
                           )}
                         </div>
                       </div>
 
                       {/* Timestamp */}
                       <span
-                        className={`block text-[9px] mt-1 text-right ${
+                        className={`block text-[9px] mt-1.5 text-right ${
                           isUser ? 'text-emerald-100/70' : 'text-slate-400'
                         }`}
                       >
@@ -471,7 +596,7 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
               <div className="text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 flex items-center gap-2 animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
                 <span className="font-medium">
-                  Listening to voice override... Speak your correction now.
+                  Listening to voice override... Speak your correction or question now.
                 </span>
               </div>
             )}
@@ -486,7 +611,7 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
                   isListening
                     ? 'Stop Voice Listening'
                     : speechSupported
-                    ? 'Click to speak your correction'
+                    ? 'Click to speak your correction or question'
                     : 'Speech recognition unavailable in this browser'
                 }
                 className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center shrink-0 ${
@@ -509,7 +634,7 @@ export const AiChatBox: React.FC<AiChatBoxProps> = ({
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isAnalyzing}
-                placeholder="e.g., That's a lithium battery, not plastic..."
+                placeholder="Ask anything, or override: 'banana peel', 'lithium battery'..."
                 className="flex-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all font-medium placeholder:text-slate-400 placeholder:italic"
               />
 
