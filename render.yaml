@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: shieldbin-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: AWS_REGION
+        value: us-east-1
+      - key: BEDROCK_MODEL_ID
+        value: anthropic.claude-3-5-sonnet-20250219-v1:0
+      - key: DYNAMODB_TABLE_NAME
+        value: ShieldBin_Scans
+      - key: ENABLE_DYNAMODB_LOGGING
+        value: "true"
+      - key: USE_MOCK_BEDROCK
+        value: "false"
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_SESSION_TOKEN
+        sync: false
