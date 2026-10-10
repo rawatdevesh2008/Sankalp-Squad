@@ -1,6 +1,8 @@
 import base64
+import json
 import logging
-from typing import List, Optional
+import re
+from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +12,13 @@ from app.models import (
     InspectionResult,
     InspectionResponse,
     InspectRequest,
+    BoundingBox,
     CategoryInfo,
     UserScore,
 )
 from app.bedrock_service import bedrock_service
 from app.dynamodb_service import dynamodb_service
+from app.prompts import clean_and_parse_json
 
 # Configure logging
 logging.basicConfig(
@@ -54,94 +58,57 @@ app.add_middleware(
 )
 
 # ==============================================================================
-# Amazon Bedrock System Prompt: Web-Knowledgeable Product & Waste Auditor
+# Universal Bedrock System Prompt: Multi-Modal Waste & Contamination Auditor
 # ==============================================================================
 SYSTEM_INSPECTOR_PROMPT = """
-You are ShieldBin AI, a real-time computer vision waste inspector, material auditor, and web-scale product intelligence engine built on AWS for municipal segregation (Indian SWM 2016 standards and global circular economy protocols).
+You are ShieldBin AI, an unconstrained, universal AI vision and global web-knowledge audit system powered by Amazon Bedrock (Claude 3.5 Sonnet).
+You act as an advanced multi-modal waste and environmental contamination auditor using your vast global product, material, consumer packaging, and waste management knowledge base.
 
 ==================================================
-1. WEB-SCALE PRODUCT & MATERIAL INTELLIGENCE
+1. EMPTY FRAME RULE (STRICT WAITING STATE)
 ==================================================
-Utilize your comprehensive global product and material knowledge base. Inspect the image for definitive visual markers:
-- Electronics: Glowing/reflective screens, camera module lenses, glass backs, metallic and glossy finishes, buttons, USB/charging ports, printed circuit boards, battery symbols.
-- Packaging & Cardboard: Corrugation flutes, clean cardboard, plastic wrap, beverage cartons, aluminium cans, PET (#1) and HDPE (#2) resin markings.
-- Organic Waste: Fibrous skins, banana peels, vegetable matter, food scraps, compostable biomass.
-- Contaminated Packaging: Translucent grease stains, absorbed cooking oil in paper fibers, wet residue, mold, food debris.
-
-==================================================
-2. ELIMINATE HALLUCINATIONS & WRONG CLASSIFICATIONS
-==================================================
-- If an electronic device (such as a mobile phone, smartphone, tablet, battery, charger, cable, or electronic accessory) is visible:
-  * NEVER classify it as food, banana peels, cardboard, plastic bottle, or a milk pouch.
-  * Explicitly recognize and classify it as an electronic or hazardous item.
-- Ignore human hands, fingers, thumbs holding the item, tabletops, or background room lighting. Focus entirely on the physical object being presented for inspection.
-
-==================================================
-3. STRICT EMPTY / NO-OBJECT STATE
-==================================================
-If the image shows only a human hand, fingers, a blank wall, floor, empty room, or no clear waste product:
-- Do NOT hallucinate items.
-- You must return item_detected: "None" with correct_bin: "Waiting for Item..." and is_contaminated: false.
-- In this scenario, return ONLY this exact JSON structure:
+If the image shows only hands, fingers, background walls, an empty desk, floor, or no clear primary object:
+- You must return item_detected: "None" with correct_bin: "Waiting for Item...".
+- Do NOT hallucinate items or classify empty space, walls, or hands as food, cardboard, or waste.
+- In this empty frame scenario, return ONLY this exact JSON structure:
 {
   "item_detected": "None",
   "category": "N/A",
   "is_contaminated": false,
-  "contamination_reason": "No clear waste item detected in the frame. Waiting for an object.",
-  "action_required": "Please place the item clearly in front of the camera.",
+  "contamination_reason": "No clear waste item detected in the camera frame.",
+  "action_required": "Please place an item clearly in front of the lens.",
   "correct_bin": "Waiting for Item...",
   "points_awarded": 0
 }
 
 ==================================================
-4. DYNAMIC OBJECT & E-WASTE LOOKUP RULE
+2. DYNAMIC AI ANALYSIS & GLOBAL WEB KNOWLEDGE
 ==================================================
-If a mobile phone or electronic device is detected, use web knowledge of consumer electronics to populate the JSON output:
-- item_detected: Exact product class (e.g., "Smartphone / Mobile Device")
-- category: "E-Waste / Hazardous Electronics"
-- is_contaminated: true
-- contamination_reason: "Contains a lithium-ion battery, heavy metals (lead, mercury, cadmium), and circuit boards that release toxic leachate in landfills."
-- action_required: "Do not place in household waste or recycling bins. Wipe personal data, remove accessories, and drop off at a certified e-waste recycling center or retail take-back program."
-- correct_bin: "Specialized E-Waste Drop-off Center"
-- bin_color: "Yellow"
-- points_awarded: 0
-- material: "Consumer Electronics (Lithium-ion Battery / Heavy Metals / Circuitry)"
-- remediation_steps: [
-    "Do not place in household waste or recycling bins",
-    "Wipe personal data and remove accessories",
-    "Drop off at a certified e-waste recycling center or retail take-back program"
-  ]
+For any real item held up or presented (whether a mobile phone, electronic device, plastic container, organic food waste, beverage can, cardboard packaging, battery, cable, or medical item):
+- Use deep visual feature extraction to identify the exact product class, brand/material markings, and physical attributes.
+- Ignore human hands, fingers, or background desk/room clutter; focus entirely on the physical item being audited.
+- Assess cleanliness, grease stains, oil saturation, sour residues, or hazardous composition.
+- Dynamically deduce safe disposal protocols, remediation steps, and appropriate target bins.
+- Electronic Devices & E-Waste Rule:
+  * If an electronic device (mobile phone, tablet, battery, charger, circuit board) is visible, NEVER classify it as food, cardboard, or a milk pouch.
+  * Explicitly recognize it as an electronic or hazardous item.
+  * Set is_contaminated: true due to lithium-ion batteries and toxic heavy metals.
+  * Direct it to "Specialized E-Waste Drop-off Center".
 
 ==================================================
-5. MUNICIPAL BIN RULES & EVALUATION SCHEMA
+3. STRICT JSON OUTPUT STRUCTURE
 ==================================================
-When an object is detected:
-- Bounding Box: [ymin, xmin, ymax, xmax] normalized on a 0-1000 scale around the item.
-- Bin Comparison:
-  * If item is hazardous, contaminated, or in the wrong target bin -> is_segregation_correct: false, box_color: "red".
-  * If item is clean and matches target bin -> is_segregation_correct: true, box_color: "green".
-- Respond ONLY with raw JSON matching this format (no markdown code fences or conversational text outside the JSON):
+Respond strictly with RAW VALID JSON. Do NOT output markdown code blocks (e.g. ```json or ```) and do NOT provide any conversational introduction or closing text.
+
+Your response MUST match this exact schema:
 {
-  "item_detected": string,
-  "category": string,
-  "is_contaminated": boolean,
-  "is_segregation_correct": boolean,
-  "box_color": "green" | "red",
-  "bounding_box": {
-    "ymin": integer (0-1000),
-    "xmin": integer (0-1000),
-    "ymax": integer (0-1000),
-    "xmax": integer (0-1000)
-  },
-  "contamination_reason": string or null,
-  "correct_bin": string,
-  "bin_color": "Blue" | "Green" | "Black" | "Red" | "Yellow" | "Gray",
-  "action_required": string,
-  "points_awarded": integer,
-  "material": string,
-  "remediation_steps": [string],
-  "confidence_score": float,
-  "environmental_impact_tip": string
+  "item_detected": "Exact name of the item observed",
+  "category": "Material category (e.g., E-Waste, Organic, Recyclable Plastic, Hazardous, Paper)",
+  "is_contaminated": true,
+  "contamination_reason": "Detailed reason explaining why it is clean or contaminated based on visual inspection",
+  "action_required": "Step-by-step safe disposal or cleaning instructions",
+  "correct_bin": "Target bin or specialized recycling center name",
+  "points_awarded": 0
 }
 """
 
@@ -233,6 +200,28 @@ def health_check():
     }
 
 
+def get_waiting_state_result() -> InspectionResult:
+    """Helper returning strict waiting state JSON when no object or frame is empty."""
+    return InspectionResult(
+        item_detected="None",
+        category="N/A",
+        is_contaminated=False,
+        is_segregation_correct=True,
+        box_color="green",
+        bounding_box=BoundingBox(ymin=0, xmin=0, ymax=0, xmax=0),
+        contamination_reason="No clear waste item detected in the camera frame.",
+        action_required="Please place an item clearly in front of the lens.",
+        correct_bin="Waiting for Item...",
+        bin_color="Gray",
+        points_awarded=0,
+        material="None",
+        remediation_steps=["Please place an item clearly in front of the lens."],
+        confidence_score=0.99,
+        environmental_impact_tip="Position the waste item clearly in front of the lens to audit material and cleanliness.",
+        engine_source="ShieldBin Frame Validator",
+    )
+
+
 @app.post("/api/inspect", response_model=InspectionResult)
 async def inspect_waste(payload: InspectRequest):
     """
@@ -242,20 +231,31 @@ async def inspect_waste(payload: InspectRequest):
     user/ward segregation score in DynamoDB, and returns green/red bounding box overlay.
     """
     try:
-        raw_base64 = payload.image_base64.strip()
+        raw_input = (payload.image_base64 or "").strip()
 
-        # Strip standard data URI header if present (e.g. data:image/jpeg;base64,...)
+        # 1. Base64 & Frame Validation:
+        # Ensure endpoint strips any data URI prefix (e.g. "data:image/jpeg;base64,")
         media_type = "image/jpeg"
-        if "," in raw_base64:
-            header, raw_base64 = raw_base64.split(",", 1)
-            header = header.lower()
-            if "png" in header:
+        if "," in raw_input:
+            header, b64_part = raw_input.split(",", 1)
+            header_lower = header.lower()
+            if "png" in header_lower:
                 media_type = "image/png"
-            elif "webp" in header:
+            elif "webp" in header_lower:
                 media_type = "image/webp"
+            raw_base64 = b64_part.strip()
+        else:
+            raw_base64 = raw_input
+
+        # Strip whitespace and linebreaks
+        raw_base64 = raw_base64.replace("\n", "").replace("\r", "").strip()
+
+        # If image payload is empty or too short (< 200 characters), immediately return waiting state JSON
+        if len(raw_base64) < 200:
+            logger.info(f"Image payload empty or too short ({len(raw_base64)} chars). Returning waiting state.")
+            return get_waiting_state_result()
 
         # Fix missing Base64 padding automatically
-        raw_base64 = raw_base64.strip().replace("\n", "").replace("\r", "")
         missing_padding = len(raw_base64) % 4
         if missing_padding:
             raw_base64 += "=" * (4 - missing_padding)
@@ -263,17 +263,12 @@ async def inspect_waste(payload: InspectRequest):
         try:
             image_bytes = base64.b64decode(raw_base64)
         except Exception as decode_err:
-            logger.warning(f"Base64 decode warning ({decode_err}). Using synthetic frame.")
-            # Fallback to small in-memory 100x100 RGB image so testing never breaks
-            from io import BytesIO
-            from PIL import Image
-            fallback_img = Image.new("RGB", (100, 100), color=(100, 149, 237))
-            buf = BytesIO()
-            fallback_img.save(buf, format="JPEG")
-            image_bytes = buf.getvalue()
+            logger.warning(f"Base64 decode failed ({decode_err}). Returning waiting state.")
+            return get_waiting_state_result()
 
         if len(image_bytes) == 0:
-            raise HTTPException(status_code=400, detail="Decoded image base64 data is empty.")
+            logger.info("Decoded image bytes empty. Returning waiting state.")
+            return get_waiting_state_result()
 
         target_bin = payload.target_bin or "Dry Recyclable"
         user_id = payload.user_id or "household_402"

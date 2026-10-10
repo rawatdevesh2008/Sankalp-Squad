@@ -135,6 +135,51 @@ def run_tests():
     print(f"      - Segregation Accuracy:   {score_data['segregation_accuracy_pct']}%")
     print(f"      - Contamination Stopped:  {score_data['contamination_prevented']} violations prevented")
 
+    # 7. Test Base64 & Frame Validation: Data URI prefix stripping
+    print("\n7. Testing Base64 Data URI prefix stripping ...")
+    b64_with_prefix = f"data:image/jpeg;base64,{create_sample_test_image_base64()}"
+    r_prefix = client.post("/api/inspect", json={"image_base64": b64_with_prefix})
+    assert r_prefix.status_code == 200, f"Expected 200, got {r_prefix.status_code}"
+    assert r_prefix.json()["success"] is True
+    print("   [PASS] Data URI prefix stripped and frame inspected successfully!")
+
+    # 8. Test Base64 & Frame Validation: Short / Empty payload (< 200 chars)
+    print("\n8. Testing Frame Validation on short/empty payloads (< 200 chars) ...")
+    for short_payload in ["", "   ", "aW1hZ2U=", "data:image/jpeg;base64,QUJD"]:
+        r_short = client.post("/api/inspect", json={"image_base64": short_payload})
+        assert r_short.status_code == 200
+        res = r_short.json()
+        assert res["item_detected"] == "None"
+        assert res["category"] == "N/A"
+        assert res["is_contaminated"] is False
+        assert res["contamination_reason"] == "No clear waste item detected in the camera frame."
+        assert res["action_required"] == "Please place an item clearly in front of the lens."
+        assert res["correct_bin"] == "Waiting for Item..."
+        assert res["points_awarded"] == 0
+    print("   [PASS] Short/empty payloads immediately return strict waiting state JSON!")
+
+    # 9. Test Markdown Cleaning (clean_and_parse_json safety checks)
+    print("\n9. Testing Markdown Cleaning safety checks ...")
+    from app.prompts import clean_and_parse_json
+
+    # Test 9a: Markdown with ```json fence
+    sample_fenced = '```json\n{"item_detected": "Plastic Bottle", "category": "Dry Recyclable", "is_contaminated": false, "contamination_reason": "Clean PET", "action_required": "Drop in Blue Bin", "correct_bin": "Blue Bin", "points_awarded": 15}\n```'
+    parsed_a = clean_and_parse_json(sample_fenced)
+    assert parsed_a["item_detected"] == "Plastic Bottle"
+    assert parsed_a["points_awarded"] == 15
+
+    # Test 9b: Markdown with ``` fence (no json label) and conversational text
+    sample_mixed = 'Here is the analysis:\n```\n{"item_detected": "Banana Peel", "category": "Wet Organic", "is_contaminated": false, "contamination_reason": "Compostable", "action_required": "Green Bin", "correct_bin": "Green Bin", "points_awarded": 15}\n```\nHope this helps!'
+    parsed_b = clean_and_parse_json(sample_mixed)
+    assert parsed_b["item_detected"] == "Banana Peel"
+
+    # Test 9c: Conversational preamble/postamble without fences
+    sample_conversational = 'I inspected the frame. {"item_detected": "Smartphone / Mobile Device", "category": "E-Waste / Hazardous Electronics", "is_contaminated": true, "contamination_reason": "Lithium-ion battery", "action_required": "Recycle at E-Waste Depot", "correct_bin": "Specialized E-Waste Drop-off Center", "points_awarded": 0} Thank you.'
+    parsed_c = clean_and_parse_json(sample_conversational)
+    assert parsed_c["item_detected"] == "Smartphone / Mobile Device"
+    assert parsed_c["is_contaminated"] is True
+    print("   [PASS] Markdown code blocks and conversational text stripped safely!")
+
     print("\n==================================================")
     print("   ALL TESTS VERIFIED & WORKING!                  ")
     print("==================================================")

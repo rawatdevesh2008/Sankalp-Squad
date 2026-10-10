@@ -9,7 +9,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from app.config import settings
-from app.prompts import get_inspection_prompt
+from app.prompts import get_inspection_prompt, clean_and_parse_json
 from app.models import InspectionResult, InspectionResponse, BoundingBox
 
 logger = logging.getLogger("shieldbin.bedrock")
@@ -23,14 +23,14 @@ MOCK_ITEMS = [
         "is_segregation_correct": True,
         "box_color": "green",
         "bounding_box": {"ymin": 0, "xmin": 0, "ymax": 0, "xmax": 0},
-        "contamination_reason": "No clear waste item detected in the frame. Waiting for an object.",
+        "contamination_reason": "No clear waste item detected in the camera frame.",
         "correct_bin": "Waiting for Item...",
         "bin_color": "Gray",
-        "action_required": "Please place the item clearly in front of the camera.",
+        "action_required": "Please place an item clearly in front of the lens.",
         "points_awarded": 0,
         "material": "None",
         "remediation_steps": [
-            "Please place the item clearly in front of the camera."
+            "Please place an item clearly in front of the lens."
         ],
         "confidence_score": 0.99,
         "environmental_impact_tip": "Position the item centrally to evaluate its material and cleanliness."
@@ -345,16 +345,8 @@ class BedrockService:
             return self._generate_mock_response(target_bin=target_bin, reason=f"Fallback (Error: {str(ex)})")
 
     def _clean_and_parse_json(self, raw_text: str) -> Dict[str, Any]:
-        """Strips markdown code blocks and loads json."""
-        cleaned = raw_text.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        elif cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip()
-        return json.loads(cleaned)
+        """Safety checks to strip any accidental markdown code blocks and conversational text."""
+        return clean_and_parse_json(raw_text)
 
     def _generate_mock_response(self, target_bin: str = "Dry Recyclable", reason: Optional[str] = None) -> InspectionResult:
         """Returns a high-fidelity simulation object with bounding box coordinates."""
