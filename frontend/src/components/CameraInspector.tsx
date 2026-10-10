@@ -82,7 +82,11 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
     ctx.strokeStyle = strokeColor;
     ctx.fillStyle = fillColor;
     ctx.beginPath();
-    ctx.roundRect(x, y, width, height, 8);
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(x, y, width, height, 8);
+    } else {
+      ctx.rect(x, y, width, height);
+    }
     ctx.fill();
     ctx.stroke();
 
@@ -188,7 +192,11 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       ctx.fillRect(0, 0, 640, 480);
       ctx.fillStyle = '#38bdf8';
       ctx.beginPath();
-      ctx.roundRect(260, 100, 120, 280, 24);
+      if (typeof (ctx as any).roundRect === 'function') {
+        (ctx as any).roundRect(260, 100, 120, 280, 24);
+      } else {
+        ctx.rect(260, 100, 120, 280);
+      }
       ctx.fill();
       ctx.fillStyle = '#0284c7';
       ctx.fillRect(295, 70, 50, 30);
@@ -216,7 +224,12 @@ export const CameraInspector: React.FC<CameraInspectorProps> = ({
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, 640, 480);
       ctx.fillStyle = '#475569';
-      ctx.roundRect(240, 160, 160, 160, 16);
+      ctx.beginPath();
+      if (typeof (ctx as any).roundRect === 'function') {
+        (ctx as any).roundRect(240, 160, 160, 160, 16);
+      } else {
+        ctx.rect(240, 160, 160, 160);
+      }
       ctx.fill();
       ctx.fillStyle = '#eab308';
       ctx.fillRect(300, 140, 40, 20);

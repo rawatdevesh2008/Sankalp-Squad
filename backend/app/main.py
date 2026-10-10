@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.models import (
+    InspectionResult,
     InspectionResponse,
     InspectRequest,
     CategoryInfo,
@@ -36,8 +37,18 @@ app = FastAPI(
 # Enable CORS for all origins (Amplify frontend, localhost, mobile cameras)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "*",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -107,7 +118,8 @@ def health_check():
     AWS App Runner health check endpoint.
     Returns 200 OK when service is running.
     """
-    is_bedrock_configured = bool(settings.AWS_ACCESS_KEY_ID or bedrock_service._client is not None)
+    is_dummy_key = any(p in (settings.AWS_ACCESS_KEY_ID or "").lower() for p in ["your_aws", "placeholder"])
+    is_bedrock_configured = bool(settings.AWS_ACCESS_KEY_ID and not is_dummy_key and bedrock_service._client is not None)
     return {
         "status": "healthy",
         "service": "ShieldBin-Backend",
@@ -119,7 +131,7 @@ def health_check():
     }
 
 
-@app.post("/api/inspect", response_model=InspectionResponse)
+@app.post("/api/inspect", response_model=InspectionResult)
 async def inspect_waste(payload: InspectRequest):
     """
     Primary endpoint requested by frontend:
@@ -204,7 +216,7 @@ def get_user_score(
     return dynamodb_service.get_user_score(user_id=user_id)
 
 
-@app.post("/api/inspect/upload", response_model=InspectionResponse)
+@app.post("/api/inspect/upload", response_model=InspectionResult)
 async def inspect_waste_file(
     file: UploadFile = File(..., description="Waste image file (JPEG, PNG, WEBP)"),
     target_bin: str = Query("Dry Recyclable", description="Bin target"),
@@ -215,10 +227,10 @@ async def inspect_waste_file(
     """
     Convenience endpoint for inspecting waste images via direct file upload.
     """
-    if not file.content_type.startswith("image/"):
+    if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type: {file.content_type}. Please upload an image.",
+            detail=f"Invalid file type: {file.content_type or 'unknown'}. Please upload an image.",
         )
 
     try:

@@ -1,11 +1,14 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
+from datetime import datetime, timezone
+
 
 class BoundingBox(BaseModel):
-    ymin: int = Field(..., description="Top edge coordinate on 0-1000 scale")
-    xmin: int = Field(..., description="Left edge coordinate on 0-1000 scale")
-    ymax: int = Field(..., description="Bottom edge coordinate on 0-1000 scale")
-    xmax: int = Field(..., description="Right edge coordinate on 0-1000 scale")
+    ymin: int = Field(0, description="Top edge coordinate on 0-1000 scale")
+    xmin: int = Field(0, description="Left edge coordinate on 0-1000 scale")
+    ymax: int = Field(0, description="Bottom edge coordinate on 0-1000 scale")
+    xmax: int = Field(0, description="Right edge coordinate on 0-1000 scale")
+
 
 class UserScore(BaseModel):
     user_id: str = "household_402"
@@ -17,6 +20,7 @@ class UserScore(BaseModel):
     segregation_accuracy_pct: float = 100.0
     last_updated: str
 
+
 class InspectRequest(BaseModel):
     image_base64: str = Field(..., description="Base64-encoded image frame from webcam")
     target_bin: Optional[str] = Field("Dry Recyclable", description="Bin being scanned: 'Dry Recyclable', 'Wet Organic', or 'Auto-Detect'")
@@ -24,33 +28,42 @@ class InspectRequest(BaseModel):
     ward_id: Optional[str] = Field("Ward-12 (Delhi)", description="Ward or municipal zone identifier")
     location_context: Optional[str] = Field("India - Municipal", description="Optional local waste context")
 
-class InspectionResponse(BaseModel):
+
+class InspectionResult(BaseModel):
     success: bool = True
-    
-    # Core Demo Focus fields:
-    item_detected: str = Field(..., description="Detected object name (e.g. 'Greasy Pizza Box')")
-    category: str = Field(..., description="Material category: Dry Recyclable, Wet Organic, Sanitary/Landfill, E-Waste")
-    is_contaminated: bool = Field(..., description="True if contamination is detected")
-    is_segregation_correct: bool = Field(..., description="True if item matches the target bin; False if cross-contaminating")
-    box_color: str = Field(..., description="'green' if segregation is correct, 'red' if contaminated/wrong bin")
-    bounding_box: BoundingBox = Field(..., description="Object coordinates for frontend live webcam overlay [ymin, xmin, ymax, xmax]")
+
+    # Core Object Verification & Detection fields:
+    item_detected: Optional[str] = Field("None", description="Detected object name or 'None' if no clear object is present in frame")
+    category: str = Field("N/A", description="Material category: Dry Recyclable, Wet Organic, Sanitary / Landfill, E-Waste / Hazardous, N/A, etc.")
+    is_contaminated: bool = Field(False, description="True if contamination or hazardous materials detected")
+    is_segregation_correct: bool = Field(True, description="True if item matches the target bin; False if cross-contaminating or hazardous")
+    box_color: str = Field("green", description="'green' if segregation is correct or waiting, 'red' if contaminated/wrong bin")
+    bounding_box: BoundingBox = Field(
+        default_factory=lambda: BoundingBox(ymin=0, xmin=0, ymax=0, xmax=0),
+        description="Object coordinates for frontend live webcam overlay [ymin, xmin, ymax, xmax]",
+    )
     contamination_reason: Optional[str] = Field(None, description="Explanation of contamination or why it violates the bin")
-    correct_bin: str = Field(..., description="Recommended bin (e.g. 'Blue Bin (Recyclables)', 'Black Bin (Landfill)')")
-    bin_color: str = Field("Blue", description="Color code: Blue, Green, Black, Red, Yellow")
-    action_required: str = Field(..., description="Actionable command, e.g. 'Greasy pizza box detected in dry paper bin — move to organic/landfill'")
-    points_awarded: int = Field(..., description="Points awarded for this scan")
-    
+    correct_bin: str = Field("Waiting for Item...", description="Recommended bin (e.g. 'Blue Bin (Recyclables)', 'Specialized E-Waste Drop-off')")
+    bin_color: str = Field("Blue", description="Color code: Blue, Green, Black, Red, Yellow, Gray")
+    action_required: str = Field("Please place the item clearly in front of the camera.", description="Actionable command")
+    points_awarded: int = Field(0, description="Points awarded for this scan")
+
     # Real-time DynamoDB Score Snapshot:
     user_score: Optional[UserScore] = Field(None, description="Updated user/household score stored in DynamoDB")
 
-    # Supplementary metadata:
+    # Supplementary metadata & Knowledge Base analysis:
     material: Optional[str] = Field(None, description="Material detected")
     remediation_steps: List[str] = Field(default_factory=list, description="Step-by-step guidance")
     confidence_score: float = Field(0.95, ge=0.0, le=1.0)
     environmental_impact_tip: Optional[str] = None
-    engine_source: str = Field(..., description="Amazon Bedrock model ID or Simulation status")
+    engine_source: str = Field("Amazon Bedrock", description="Amazon Bedrock model ID or Simulation status")
     scan_id: Optional[str] = Field(None, description="Unique scan audit ID logged in DynamoDB")
-    timestamp: str
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+# Backwards compatibility alias
+InspectionResponse = InspectionResult
+
 
 class CategoryInfo(BaseModel):
     category: str

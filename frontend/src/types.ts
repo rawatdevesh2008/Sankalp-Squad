@@ -26,7 +26,7 @@ export interface InspectRequest {
 
 export interface InspectionResponse {
   success: boolean;
-  item_detected: string;
+  item_detected: string | null;
   category: string;
   is_contaminated: boolean;
   is_segregation_correct: boolean;
@@ -46,3 +46,6 @@ export interface InspectionResponse {
   scan_id?: string | null;
   timestamp: string;
 }
+
+export type InspectionResult = InspectionResponse;
+

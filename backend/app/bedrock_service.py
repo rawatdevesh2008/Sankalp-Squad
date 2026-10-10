@@ -10,31 +10,51 @@ from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from app.config import settings
 from app.prompts import get_inspection_prompt
-from app.models import InspectionResponse, BoundingBox
+from app.models import InspectionResult, InspectionResponse, BoundingBox
 
 logger = logging.getLogger("shieldbin.bedrock")
 
 # Predefined realistic simulation responses for testing without active AWS credentials
 MOCK_ITEMS = [
     {
-        "item_detected": "Greasy Cardboard Pizza Box",
-        "category": "Sanitary / Landfill",
+        "item_detected": "None",
+        "category": "N/A",
+        "is_contaminated": False,
+        "is_segregation_correct": True,
+        "box_color": "green",
+        "bounding_box": {"ymin": 0, "xmin": 0, "ymax": 0, "xmax": 0},
+        "contamination_reason": "No clear waste item detected in the frame. Waiting for an object.",
+        "correct_bin": "Waiting for Item...",
+        "bin_color": "Gray",
+        "action_required": "Please place the item clearly in front of the camera.",
+        "points_awarded": 0,
+        "material": "None",
+        "remediation_steps": [
+            "Please place the item clearly in front of the camera."
+        ],
+        "confidence_score": 0.99,
+        "environmental_impact_tip": "Position the item centrally to evaluate its material and cleanliness."
+    },
+    {
+        "item_detected": "Mobile Phone",
+        "category": "E-Waste / Hazardous",
         "is_contaminated": True,
         "is_segregation_correct": False,
         "box_color": "red",
-        "bounding_box": {"ymin": 180, "xmin": 210, "ymax": 790, "xmax": 810},
-        "contamination_reason": "Severe cheese grease and tomato sauce oil absorbed into cellulose paper fibers",
-        "correct_bin": "Black Bin (Landfill / Soiled Waste)",
-        "bin_color": "Black",
-        "action_required": "Greasy pizza box detected in dry paper bin — move to organic/landfill",
-        "points_awarded": -5,
-        "material": "Corrugated Cardboard (Grease-Soaked)",
+        "bounding_box": {"ymin": 250, "xmin": 280, "ymax": 750, "xmax": 720},
+        "contamination_reason": "Contains hazardous lithium-ion batteries and toxic heavy metals (lead, mercury, cadmium)",
+        "correct_bin": "Specialized E-Waste Drop-off",
+        "bin_color": "Yellow",
+        "action_required": "DO NOT place in any standard bin. Hazardous materials must be taken to a certified electronics recycling depot, manufacturer take-back program, or specialized waste collection point.",
+        "points_awarded": 0,
+        "material": "Electronics (Lithium-ion / Heavy Metals)",
         "remediation_steps": [
-            "Tear off clean dry lid and drop in Blue Bin",
-            "Discard greasy food-stained bottom section into Black Bin"
+            "Keep separate from all wet, dry, or sanitary household waste",
+            "Do not puncture, crush, or expose battery to heat",
+            "Hand over to authorized e-waste recycler or designated municipal e-waste kiosk"
         ],
-        "confidence_score": 0.96,
-        "environmental_impact_tip": "Greasy pizza boxes in dry paper bins ruin 70%+ of recyclables by contaminating the water pulper."
+        "confidence_score": 0.99,
+        "environmental_impact_tip": "Improper disposal of lithium batteries causes landfill fires and leaches toxic metals into groundwater."
     },
     {
         "item_detected": "Clean PET Water Bottle",
@@ -58,25 +78,24 @@ MOCK_ITEMS = [
         "environmental_impact_tip": "Recycling PET plastic saves 60% of the energy needed for virgin production."
     },
     {
-        "item_detected": "Unrinsed Single-Use Milk Pouch",
-        "category": "Dry Recyclable",
+        "item_detected": "Greasy Cardboard Pizza Box",
+        "category": "Sanitary / Landfill",
         "is_contaminated": True,
         "is_segregation_correct": False,
         "box_color": "red",
-        "bounding_box": {"ymin": 250, "xmin": 280, "ymax": 720, "xmax": 750},
-        "contamination_reason": "Sour milk fat residue inside creates bacteria and foul odor",
-        "correct_bin": "Blue Bin (Recyclables - After Rinse)",
-        "bin_color": "Blue",
-        "action_required": "Milk residue detected! Slit open, rinse with water, and let dry before placing in Blue Bin",
-        "points_awarded": 5,
-        "material": "Low-Density Polyethylene (LDPE #4)",
+        "bounding_box": {"ymin": 180, "xmin": 210, "ymax": 790, "xmax": 810},
+        "contamination_reason": "Severe cheese grease and tomato sauce oil absorbed into cellulose paper fibers",
+        "correct_bin": "Black Bin (Landfill / Soiled Waste)",
+        "bin_color": "Black",
+        "action_required": "Greasy pizza box detected in dry paper bin — move to organic/landfill",
+        "points_awarded": -5,
+        "material": "Corrugated Cardboard (Grease-Soaked)",
         "remediation_steps": [
-            "Slit open completely",
-            "Rinse with a quick splash of water",
-            "Drop dry pouch in Blue Bin"
+            "Tear off clean dry lid and drop in Blue Bin",
+            "Discard greasy food-stained bottom section into Black Bin"
         ],
-        "confidence_score": 0.94,
-        "environmental_impact_tip": "Cleaned LDPE milk pouches are recycled into industrial drainage pipes across India."
+        "confidence_score": 0.96,
+        "environmental_impact_tip": "Greasy pizza boxes in dry paper bins ruin 70%+ of recyclables by contaminating the water pulper."
     },
     {
         "item_detected": "Banana Peel & Wet Food Scraps",
@@ -99,24 +118,25 @@ MOCK_ITEMS = [
         "environmental_impact_tip": "Composting organic waste stops methane release at landfill sites."
     },
     {
-        "item_detected": "Lithium Battery / Charging Cable",
-        "category": "E-Waste",
+        "item_detected": "Unrinsed Single-Use Milk Pouch",
+        "category": "Dry Recyclable",
         "is_contaminated": True,
         "is_segregation_correct": False,
         "box_color": "red",
-        "bounding_box": {"ymin": 300, "xmin": 320, "ymax": 700, "xmax": 680},
-        "contamination_reason": "Hazardous electronic waste inside municipal waste stream causes landfill fires",
-        "correct_bin": "Yellow Bin (E-Waste / Specialized Recycling)",
-        "bin_color": "Yellow",
-        "action_required": "Hazardous e-waste detected! Do not drop in household bins — take to Yellow Bin / e-waste kiosk",
-        "points_awarded": 10,
-        "material": "E-Waste (Hazardous Heavy Metals)",
+        "bounding_box": {"ymin": 250, "xmin": 280, "ymax": 720, "xmax": 750},
+        "contamination_reason": "Sour milk fat residue inside creates bacteria and foul odor",
+        "correct_bin": "Blue Bin (Recyclables - After Rinse)",
+        "bin_color": "Blue",
+        "action_required": "Milk residue detected! Slit open, rinse with water, and let dry before placing in Blue Bin",
+        "points_awarded": 5,
+        "material": "Low-Density Polyethylene (LDPE #4)",
         "remediation_steps": [
-            "Tape terminals if battery is exposed",
-            "Deposit in dedicated e-waste collection bin"
+            "Slit open completely",
+            "Rinse with a quick splash of water",
+            "Drop dry pouch in Blue Bin"
         ],
-        "confidence_score": 0.97,
-        "environmental_impact_tip": "Batteries in regular municipal bins cause violent chemical fires at dumpsites."
+        "confidence_score": 0.94,
+        "environmental_impact_tip": "Cleaned LDPE milk pouches are recycled into industrial drainage pipes across India."
     }
 ]
 
@@ -130,6 +150,11 @@ class BedrockService:
 
     def _init_client(self):
         """Attempts to initialize boto3 Bedrock Runtime client."""
+        if any(p in (settings.AWS_ACCESS_KEY_ID or "").lower() for p in ["your_aws", "placeholder", "your_access_key"]):
+            logger.info("Demo/placeholder AWS credentials detected. Operating in Simulation Mode.")
+            self._client = None
+            return
+
         try:
             if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
                 self._client = boto3.client(
@@ -158,10 +183,11 @@ class BedrockService:
         media_type: str = "image/jpeg",
         target_bin: str = "Dry Recyclable",
         location_context: str = "India - Municipal",
-    ) -> InspectionResponse:
+    ) -> InspectionResult:
         """
         Inspects waste image using Amazon Bedrock Claude Vision.
-        Detects contamination and computes normalized bounding box coordinates for frontend overlay.
+        Performs high-confidence object detection first, followed by open knowledge-base
+        material and hazardous contamination analysis.
         """
         if settings.USE_MOCK_BEDROCK or self._client is None:
             logger.info("Using mock simulation mode for inspection.")
@@ -210,6 +236,52 @@ class BedrockService:
 
             parsed_data = self._clean_and_parse_json(raw_content)
 
+            raw_item = str(parsed_data.get("item_detected", "")).strip()
+            is_no_object = raw_item.lower() in ("none", "null", "no object", "n/a", "")
+
+            # 1. No Object Scenario
+            if is_no_object:
+                return InspectionResult(
+                    success=True,
+                    item_detected="None",
+                    category="N/A",
+                    is_contaminated=False,
+                    is_segregation_correct=True,
+                    box_color="green",
+                    bounding_box=BoundingBox(ymin=0, xmin=0, ymax=0, xmax=0),
+                    contamination_reason=parsed_data.get("contamination_reason") or "No clear waste item detected in the frame. Waiting for an object.",
+                    correct_bin=parsed_data.get("correct_bin") or "Waiting for Item...",
+                    bin_color=parsed_data.get("bin_color", "Gray"),
+                    action_required=parsed_data.get("action_required") or "Please place the item clearly in front of the camera.",
+                    points_awarded=int(parsed_data.get("points_awarded", 0)),
+                    material="None",
+                    remediation_steps=parsed_data.get("remediation_steps", ["Please place the item clearly in front of the camera."]),
+                    confidence_score=float(parsed_data.get("confidence_score", 0.99)),
+                    environmental_impact_tip=parsed_data.get(
+                        "environmental_impact_tip",
+                        "Position the item clearly in front of the camera to verify the item and inspect for contamination.",
+                    ),
+                    engine_source=f"Amazon Bedrock ({self.model_id.split(':')[-1] if ':' in self.model_id else self.model_id})",
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                )
+
+            # 2. Clear Object Detected -> Open Knowledge Base & Hazardous Material Analysis
+            item_detected = raw_item
+            category = parsed_data.get("category", "General Waste")
+
+            # Check for hazardous / electronic / battery items
+            is_hazard = any(
+                h in f"{item_detected} {category}".lower()
+                for h in ["e-waste", "hazard", "battery", "phone", "electronics", "chemical", "medical", "cable"]
+            )
+            is_contaminated = bool(parsed_data.get("is_contaminated", is_hazard))
+
+            if is_hazard:
+                is_contaminated = True
+
+            is_segregation_correct = bool(parsed_data.get("is_segregation_correct", not is_contaminated))
+            box_color = "red" if (is_contaminated or not is_segregation_correct) else "green"
+
             # Extract or normalize bounding box
             bbox_raw = parsed_data.get("bounding_box", {})
             if isinstance(bbox_raw, list) and len(bbox_raw) == 4:
@@ -224,25 +296,32 @@ class BedrockService:
             else:
                 bbox = BoundingBox(ymin=200, xmin=200, ymax=800, xmax=800)
 
-            is_segregation_correct = bool(parsed_data.get("is_segregation_correct", not parsed_data.get("is_contaminated", False)))
-            box_color = "green" if is_segregation_correct else "red"
+            correct_bin = parsed_data.get("correct_bin")
+            if not correct_bin:
+                correct_bin = "Specialized E-Waste Drop-off" if is_hazard else ("Blue Bin (Recyclables)" if is_segregation_correct else "Black Bin (Landfill / Soiled Waste)")
 
-            item_detected = parsed_data.get("item_detected") or parsed_data.get("item_name") or "Unidentified Item"
-            correct_bin = parsed_data.get("correct_bin") or parsed_data.get("bin_name") or "Blue Bin (Recyclables)"
-            action_required = parsed_data.get("action_required") or "Inspect and dispose cleanly"
-            points_awarded = int(parsed_data.get("points_awarded", 15 if is_segregation_correct else -5))
+            bin_color = parsed_data.get("bin_color")
+            if not bin_color:
+                bin_color = "Yellow" if is_hazard else ("Blue" if is_segregation_correct else "Black")
 
-            return InspectionResponse(
+            action_required = parsed_data.get("action_required") or (
+                "DO NOT place in any standard bin. Hazardous materials must be taken to a certified electronics recycling depot, manufacturer take-back program, or specialized waste collection point."
+                if is_hazard else "Inspect and dispose cleanly according to municipal waste guidelines."
+            )
+
+            points_awarded = int(parsed_data.get("points_awarded", 0 if is_hazard else (15 if is_segregation_correct else -5)))
+
+            return InspectionResult(
                 success=True,
                 item_detected=item_detected,
-                category=parsed_data.get("category", "Dry Recyclable"),
-                is_contaminated=bool(parsed_data.get("is_contaminated", False)),
+                category=category,
+                is_contaminated=is_contaminated,
                 is_segregation_correct=is_segregation_correct,
                 box_color=box_color,
                 bounding_box=bbox,
                 contamination_reason=parsed_data.get("contamination_reason"),
                 correct_bin=correct_bin,
-                bin_color=parsed_data.get("bin_color", "Blue"),
+                bin_color=bin_color,
                 action_required=action_required,
                 points_awarded=points_awarded,
                 material=parsed_data.get("material", "Mixed Material"),
@@ -277,7 +356,7 @@ class BedrockService:
         cleaned = cleaned.strip()
         return json.loads(cleaned)
 
-    def _generate_mock_response(self, target_bin: str = "Dry Recyclable", reason: Optional[str] = None) -> InspectionResponse:
+    def _generate_mock_response(self, target_bin: str = "Dry Recyclable", reason: Optional[str] = None) -> InspectionResult:
         """Returns a high-fidelity simulation object with bounding box coordinates."""
         item = random.choice(MOCK_ITEMS)
         engine_label = "ShieldBin Simulation Engine"
@@ -291,7 +370,7 @@ class BedrockService:
             xmax=item["bounding_box"]["xmax"],
         )
 
-        return InspectionResponse(
+        return InspectionResult(
             success=True,
             item_detected=item["item_detected"],
             category=item["category"],

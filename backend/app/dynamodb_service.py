@@ -31,6 +31,13 @@ class DynamoDBService:
             logger.info("DynamoDB logging is disabled in configuration.")
             return
 
+        if any(p in (settings.AWS_ACCESS_KEY_ID or "").lower() for p in ["your_aws", "placeholder", "your_access_key"]):
+            logger.info("Demo/placeholder AWS credentials detected. Operating with in-memory scores.")
+            self._dynamodb_resource = None
+            self._table = None
+            self._scores_table = None
+            return
+
         try:
             if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
                 self._dynamodb_resource = boto3.resource(
@@ -82,7 +89,13 @@ class DynamoDBService:
             }
 
         score_rec = self._local_user_scores[user_id]
+        
+        # If no object is detected in frame, return current score without altering scan statistics
+        if scan_result.get("item_detected") in ("None", None):
+            return scan_id, UserScore(**score_rec)
+
         points_awarded = int(scan_result.get("points_awarded", 0))
+
         is_correct = bool(scan_result.get("is_segregation_correct", True))
         is_contaminated = bool(scan_result.get("is_contaminated", False))
 
