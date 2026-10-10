@@ -1,6 +1,6 @@
-# SegregateGuard Frontend
+# ShieldBin Frontend
 
-A responsive, polished dashboard for the SegregateGuard FastAPI backend in `backend.zip`.
+A responsive, polished dashboard for the ShieldBin FastAPI backend in `backend.zip`.
 
 ## What's included
 - Responsive dashboard with eco score, inspections, accuracy and contamination metrics
